@@ -2,8 +2,36 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - .github/workflows/ci.yml
+      - analysis_options.yaml
+      - pubspec.yaml
+      - lib/**
+      - test/**
+      - android/**
+      - example/analysis_options.yaml
+      - example/pubspec.yaml
+      - example/lib/**
+      - example/android/**
+      - tool/verify_android_16k.sh
   push:
     branches: [main]
+    paths:
+      - .github/workflows/ci.yml
+      - analysis_options.yaml
+      - pubspec.yaml
+      - lib/**
+      - test/**
+      - android/**
+      - example/analysis_options.yaml
+      - example/pubspec.yaml
+      - example/lib/**
+      - example/android/**
+      - tool/verify_android_16k.sh
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

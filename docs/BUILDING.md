@@ -72,6 +72,13 @@ The native Xray build forces Go external linking and passes the locked 16 KB
 page size to the NDK linker. This keeps ELF alignment identical on Linux and
 macOS build hosts.
 
+The full native workflow is intentionally gated because it rebuilds every ABI.
+It runs when a non-draft pull request is opened, when a draft is marked ready
+for review, and when invoked manually to produce release artifacts. Merging to
+`main` does not repeat an already completed pull-request build. If native inputs
+change after a pull request is ready, run the workflow manually or move the
+pull request back to draft and mark it ready again.
+
 Use Android Gradle Plugin 8.5.1 or newer and NDK r28 or newer when native
 dependencies are rebuilt. Prebuilt native libraries must be verified
 individually.
