@@ -8,12 +8,6 @@ on:
       - .github/workflows/native-build.yml
       - native/**
       - tool/native/**
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/native-build.yml
-      - native/**
-      - tool/native/**
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -24,7 +18,7 @@ permissions:
 
 jobs:
   android:
-    if: github.event_name != 'pull_request' || github.event.action == 'ready_for_review' || !github.event.pull_request.draft
+    if: github.event_name == 'workflow_dispatch' || github.event.action == 'ready_for_review' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
