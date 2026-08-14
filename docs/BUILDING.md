@@ -68,9 +68,9 @@ native library with:
 The script uses `zipalign -P 16` and inspects every ELF `LOAD` segment. A
 successful Gradle build alone is not evidence of 16 KB compatibility.
 
-The native Xray build also passes the locked 16 KB page size explicitly to
-the Go linker. This keeps ELF alignment identical when `gomobile` selects a
-different link mode on Linux and macOS build hosts.
+The native Xray build forces Go external linking and passes the locked 16 KB
+page size to the NDK linker. This keeps ELF alignment identical on Linux and
+macOS build hosts.
 
 Use Android Gradle Plugin 8.5.1 or newer and NDK r28 or newer when native
 dependencies are rebuilt. Prebuilt native libraries must be verified

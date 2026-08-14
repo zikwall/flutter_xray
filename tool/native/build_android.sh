@@ -68,7 +68,8 @@ build_xray() {
       -target=android \
       -androidapi "$ANDROID_API" \
       -trimpath \
-      -ldflags="-s -w -buildid= -checklinkname=0 -R=$ANDROID_PAGE_SIZE" \
+      -ldflags="-s -w -buildid= -checklinkname=0 -linkmode=external \
+        -extldflags=-Wl,-z,max-page-size=$ANDROID_PAGE_SIZE,-z,common-page-size=$ANDROID_PAGE_SIZE" \
       -o "$native_output_root/xray/libv2ray.aar" \
       ./
   )
