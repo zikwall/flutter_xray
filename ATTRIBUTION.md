@@ -1,17 +1,21 @@
-# Attribution
+# Third-party software
 
-This project builds on the work of several upstream projects. We are grateful for their efforts and contributions to the open-source ecosystem.
+This repository contains or links software maintained by other projects. Their
+licenses apply to those components independently of this repository's MIT
+license.
 
-- AndroidLibXrayLite (Xray core for Android)
-  - Repository: https://github.com/2dust/AndroidLibXrayLite
-  - License: Refer to the upstream repository for licensing details.
+| Component | Use | Upstream | License |
+| --- | --- | --- | --- |
+| AndroidLibXrayLite | Android bindings and embedded Xray core (`android/libs/libv2ray.aar`) | [2dust/AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite) | LGPL-3.0 |
+| Xray-core | Proxy core embedded through AndroidLibXrayLite | [XTLS/Xray-core](https://github.com/XTLS/Xray-core) | MPL-2.0 |
+| BadVPN tun2socks | TUN-to-SOCKS executable currently shipped as `libtun2socks.so` | [ambrop72/badvpn](https://github.com/ambrop72/badvpn) | See upstream `COPYING` |
+| flutter_v2ray | Original Flutter integration lineage | [blueboy-tm/flutter_v2ray](https://github.com/blueboy-tm/flutter_v2ray) | See upstream repository |
 
-- badvpn (tun2socks)
-  - Repository: https://github.com/ambrop72/badvpn
-  - License: Refer to the upstream repository for licensing details.
+The embedded AAR has SHA-256
+`86c15e94849fe1b3655e9a96f77d66b6dfd0a9a056922b694491629c5052f685`.
+Its Go build metadata identifies `github.com/2dust/AndroidLibXrayLite` and
+`github.com/xtls/xray-core`; the legacy filenames `libv2ray.aar` and
+`libv2jni.so` do not mean that AndroidLibV2rayLite is used.
 
-- flutter_v2ray
-  - Repository: https://raw.githubusercontent.com/blueboy-tm/flutter_v2ray
-  - License: Refer to the upstream repository for licensing details.
-
-If you believe we have missed an attribution or you want to suggest improvements, please open an issue or pull request on the repository.
+Release artifacts must be checked for complete license notices before
+distribution. Report missing attribution through a GitHub issue.

@@ -71,6 +71,9 @@ example/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.j
 **/Flutter/App.framework/
 **/Flutter/Flutter.framework/
 **/Flutter/Flutter.podspec
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/Flutter/ephemeral/
 **/.generated/
 **/DerivedData/
 **/xcuserdata/

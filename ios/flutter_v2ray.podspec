@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
 Android-first Flutter plugin providing V2Ray/Xray client control.
 iOS bindings are retained for API compatibility but currently unsupported.
                        DESC
-  s.homepage         = 'https://github.com/amir-zr/flutter_v2ray_client'
+  s.homepage         = 'https://github.com/zikwall/flutter_xray'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Amir Ziari' => 'ahz85955@gmail.com' }
   s.source           = { :path => '.' }
