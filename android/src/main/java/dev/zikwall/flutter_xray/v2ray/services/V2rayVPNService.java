@@ -8,7 +8,11 @@ import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
 import dev.zikwall.flutter_xray.tunnel.BadVpnTunnelBackend;
+import dev.zikwall.flutter_xray.tunnel.HevTunnelBackend;
+import dev.zikwall.flutter_xray.tunnel.HevTunnelConfig;
 import dev.zikwall.flutter_xray.tunnel.TunnelBackend;
+import dev.zikwall.flutter_xray.tunnel.TunnelBackendKind;
+import dev.zikwall.flutter_xray.tunnel.TunnelBackendSelector;
 import dev.zikwall.flutter_xray.tunnel.TunnelLifecycle;
 import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
 import dev.zikwall.flutter_xray.v2ray.interfaces.V2rayServicesListener;
@@ -142,11 +146,27 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
         }
         Builder builder = new Builder();
         builder.setSession(v2rayConfig.REMARK);
-        builder.setMtu(1500);
-        builder.addAddress("26.26.26.1", 30);
+        builder.setMtu(HevTunnelConfig.DEFAULT_MTU);
+        builder.addAddress(HevTunnelConfig.DEFAULT_IPV4, 30);
+
+        TunnelBackendKind backendKind;
+        try {
+            backendKind = TunnelBackendSelector.fromManifest(this);
+        } catch (Exception error) {
+            Log.e("VPN_SERVICE", "Invalid tunnel backend configuration", error);
+            stopAllProcess();
+            return;
+        }
+
+        if (backendKind == TunnelBackendKind.HEV) {
+            builder.addAddress(HevTunnelConfig.DEFAULT_IPV6, 126);
+        }
 
         if (v2rayConfig.BYPASS_SUBNETS == null || v2rayConfig.BYPASS_SUBNETS.isEmpty()) {
             builder.addRoute("0.0.0.0", 0);
+            if (backendKind == TunnelBackendKind.HEV) {
+                builder.addRoute("::", 0);
+            }
         } else {
             for (String subnet : v2rayConfig.BYPASS_SUBNETS) {
                 String[] parts = subnet.split("/");
@@ -213,11 +233,22 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             if (mInterface == null) {
                 throw new IllegalStateException("Android failed to establish the VPN interface");
             }
-            TunnelBackend backend = new BadVpnTunnelBackend(
-                    getApplicationContext(),
-                    mInterface.getFileDescriptor(),
-                    v2rayConfig.LOCAL_SOCKS5_PORT,
-                    this::stopAllProcess);
+            TunnelBackend backend;
+            if (backendKind == TunnelBackendKind.HEV) {
+                backend = new HevTunnelBackend(
+                        getApplicationContext(),
+                        mInterface.getFd(),
+                        v2rayConfig.LOCAL_SOCKS5_PORT,
+                        true,
+                        this::stopAllProcess);
+            } else {
+                backend = new BadVpnTunnelBackend(
+                        getApplicationContext(),
+                        mInterface.getFileDescriptor(),
+                        v2rayConfig.LOCAL_SOCKS5_PORT,
+                        this::stopAllProcess);
+            }
+            Log.i("VPN_SERVICE", "Starting tunnel backend: " + backend.name());
             if (!tunnelLifecycle.start(backend)) {
                 throw new IllegalStateException(
                         "Tunnel backend is already active: " + tunnelLifecycle.activeBackendName());

@@ -217,9 +217,12 @@ public final class V2rayCoreManager {
             // Configure protector target server and IP family preference before starting
             // core
             try {
-                String server = v2rayConfig.CONNECTED_V2RAY_SERVER_ADDRESS + ":"
-                        + v2rayConfig.CONNECTED_V2RAY_SERVER_PORT;
-                Libv2ray.setProtectorServer(server, false);
+                if (!v2rayConfig.CONNECTED_V2RAY_SERVER_ADDRESS.isEmpty()
+                        && !v2rayConfig.CONNECTED_V2RAY_SERVER_PORT.isEmpty()) {
+                    String server = v2rayConfig.CONNECTED_V2RAY_SERVER_ADDRESS + ":"
+                            + v2rayConfig.CONNECTED_V2RAY_SERVER_PORT;
+                    Libv2ray.setProtectorServer(server, false);
+                }
             } catch (Exception ignored) {
             }
             coreController.startLoop(v2rayConfig.V2RAY_FULL_JSON_CONFIG, 0);

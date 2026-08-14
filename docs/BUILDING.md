@@ -102,7 +102,18 @@ to the ignored `native-build/android` directory. `MANIFEST.txt` records every
 locked input and the SHA-256 of each AAR/shared library. The build finishes by
 checking all generated 64-bit ELF files for 16 KB alignment.
 
+After a successful HEV build, install exactly those verified artifacts into the
+Android plugin runtime:
+
+```shell
+./tool/native/install_hev_android.sh
+```
+
+The install command rejects a manifest produced from a different HEV revision,
+NDK or page-size setting. Pass an artifact directory as its only argument when
+installing an artifact downloaded from the remote native-build workflow.
+
 The `Native Android build` GitHub Actions workflow performs the same build on a
-clean remote runner and uploads the generated directory. These artifacts are
-build evidence only: this revision does not copy them into `android/libs` or
-`android/src/main/jniLibs`, so the plugin's VPN behavior is unchanged.
+clean remote runner and uploads the generated directory. Release updates remain
+manual: downloading and installing a workflow artifact is a deliberate source
+change, not an action performed for every commit.

@@ -22,6 +22,26 @@ The Android implementation currently embeds
 - Android application exclusion through `blockedApps`;
 - subnet bypass through `bypassSubnets`.
 
+VPN mode contains two TUN-to-SOCKS implementations. BadVPN tun2socks remains
+the compatibility default. The HEV backend is packaged for all supported
+Android ABIs and can be enabled by an application manifest override while it is
+being validated:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <meta-data
+            android:name="dev.zikwall.flutter_xray.TUNNEL_BACKEND"
+            android:value="hev"
+            tools:replace="android:value" />
+    </application>
+</manifest>
+```
+
+The example application's debug build uses HEV. Its release build inherits the
+BadVPN default.
+
 ## Install
 
 Until a package release is published, depend on a pinned Git revision:
@@ -78,9 +98,9 @@ See [BUILDING.md](docs/BUILDING.md) for reproducible local checks and
 [TESTING.md](docs/TESTING.md) for the compatibility test matrix.
 
 Clone with `--recurse-submodules` when working on native code. The pinned
-AndroidLibXrayLite and hev-socks5-tunnel sources are build inputs; generated
-native artifacts are not committed. The currently released VPN data path still
-uses the bundled BadVPN tun2socks executable.
+AndroidLibXrayLite and hev-socks5-tunnel sources are reproducible build inputs.
+Runtime HEV libraries are generated only from the locked source and toolchain;
+see the native install command in [BUILDING.md](docs/BUILDING.md).
 
 ## License and third-party software
 
