@@ -1,27 +1,27 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import 'flutter_v2ray_platform_interface.dart';
-import 'model/v2ray_status.dart' show V2RayStatus;
+import 'flutter_xray_platform_interface.dart';
+import 'model/xray_status.dart' show XrayStatus;
 
-/// An implementation of [FlutterV2rayPlatform] that uses method channels.
-class MethodChannelFlutterV2ray extends FlutterV2rayPlatform {
+/// An implementation of [FlutterXrayPlatform] that uses method channels.
+class MethodChannelFlutterXray extends FlutterXrayPlatform {
   /// The method channel used to interact with the native platform.
   @visibleForTesting
-  final methodChannel = const MethodChannel('flutter_v2ray_client');
+  final methodChannel = const MethodChannel('flutter_xray');
 
   /// The event channel used to receive status updates from the native platform.
-  final eventChannel = const EventChannel('flutter_v2ray_client/status');
+  final eventChannel = const EventChannel('flutter_xray/status');
 
   @override
-  Future<void> initializeV2Ray({
-    required void Function(V2RayStatus status) onStatusChanged,
+  Future<void> initialize({
+    required void Function(XrayStatus status) onStatusChanged,
     required String notificationIconResourceType,
     required String notificationIconResourceName,
   }) async {
     eventChannel.receiveBroadcastStream().distinct().cast().listen((event) {
       if (event != null) {
-        onStatusChanged.call(V2RayStatus(
+        onStatusChanged.call(XrayStatus(
           duration: event[0],
           uploadSpeed: int.parse(event[1]),
           downloadSpeed: int.parse(event[2]),
@@ -32,7 +32,7 @@ class MethodChannelFlutterV2ray extends FlutterV2rayPlatform {
       }
     });
     await methodChannel.invokeMethod(
-      'initializeV2Ray',
+      'initialize',
       {
         'notificationIconResourceType': notificationIconResourceType,
         'notificationIconResourceName': notificationIconResourceName,
@@ -41,7 +41,7 @@ class MethodChannelFlutterV2ray extends FlutterV2rayPlatform {
   }
 
   @override
-  Future<void> startV2Ray({
+  Future<void> start({
     required String remark,
     required String config,
     required String notificationDisconnectButtonName,
@@ -49,7 +49,7 @@ class MethodChannelFlutterV2ray extends FlutterV2rayPlatform {
     List<String>? bypassSubnets,
     bool proxyOnly = false,
   }) async {
-    await methodChannel.invokeMethod('startV2Ray', {
+    await methodChannel.invokeMethod('start', {
       'remark': remark,
       'config': config,
       'blocked_apps': blockedApps,
@@ -60,8 +60,8 @@ class MethodChannelFlutterV2ray extends FlutterV2rayPlatform {
   }
 
   @override
-  Future<void> stopV2Ray() async {
-    await methodChannel.invokeMethod('stopV2Ray');
+  Future<void> stop() async {
+    await methodChannel.invokeMethod('stop');
   }
 
   @override

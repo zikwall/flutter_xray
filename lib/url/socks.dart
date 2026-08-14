@@ -1,12 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// Socks URL parser and adapter to produce V2Ray configuration pieces.
+/// SOCKS URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `socks://` share link into structured fields and exposes
-/// outbound and stream settings compatible with the V2Ray core.
-class SocksURL extends V2RayURL {
+/// outbound and stream settings compatible with the Xray core.
+class SocksURL extends XrayURL {
   /// Creates a SocksURL by parsing the provided socks share link string.
   ///
   /// Throws [ArgumentError] if the url does not start with `socks://` or
@@ -51,7 +51,7 @@ class SocksURL extends V2RayURL {
   @override
   String get remark => Uri.decodeFull(uri.fragment.replaceAll('+', '%20'));
 
-  /// Outbound configuration map for the socks protocol used by V2Ray core.
+  /// Outbound configuration map for the SOCKS protocol used by Xray core.
   @override
   Map<String, dynamic> get outbound1 => {
         'protocol': 'socks',

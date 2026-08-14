@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:flutter_xray/flutter_xray.dart';
 
-/// A page that displays V2Ray logs from the system logcat
+/// A page that displays Xray logs from the system logcat.
 class LogViewerPage extends StatefulWidget {
   const LogViewerPage({super.key});
 
@@ -15,7 +15,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
   List<String> _filteredLogs = [];
   bool _isLoading = false;
   final TextEditingController _searchController = TextEditingController();
-  final V2ray _v2ray = V2ray(onStatusChanged: (_) {});
+  final Xray _xray = Xray(onStatusChanged: (_) {});
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -50,7 +50,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
     });
 
     try {
-      final logs = await _v2ray.getLogs();
+      final logs = await _xray.getLogs();
       setState(() {
         _logs = logs;
         _filteredLogs = logs;
@@ -90,7 +90,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
     );
 
     if (confirmed == true) {
-      final success = await _v2ray.clearLogs();
+      final success = await _xray.clearLogs();
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +162,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('V2Ray Logs'),
+        title: const Text('Xray Logs'),
         actions: [
           IconButton(
             icon: const Icon(Icons.copy),

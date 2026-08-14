@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client;
+package dev.zikwall.flutter_xray;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -13,10 +13,10 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import dev.amirzr.flutter_v2ray_client.v2ray.V2rayController;
-import dev.amirzr.flutter_v2ray_client.v2ray.V2rayReceiver;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.AppConfigs;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.LogcatManager;
+import dev.zikwall.flutter_xray.v2ray.V2rayController;
+import dev.zikwall.flutter_xray.v2ray.V2rayReceiver;
+import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
+import dev.zikwall.flutter_xray.v2ray.utils.LogcatManager;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -30,9 +30,9 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
 
 /**
- * FlutterV2rayPlugin
+ * FlutterXrayPlugin
  */
-public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener {
+public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener {
 
     private static final int REQUEST_CODE_VPN_PERMISSION = 24;
     private final ExecutorService executor = Executors.newCachedThreadPool();
@@ -49,8 +49,8 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
         this.appContext = binding.getApplicationContext();
-        vpnControlMethod = new MethodChannel(binding.getBinaryMessenger(), "flutter_v2ray_client");
-        vpnStatusEvent = new EventChannel(binding.getBinaryMessenger(), "flutter_v2ray_client/status");
+        vpnControlMethod = new MethodChannel(binding.getBinaryMessenger(), "flutter_xray");
+        vpnStatusEvent = new EventChannel(binding.getBinaryMessenger(), "flutter_xray/status");
 
         vpnStatusEvent.setStreamHandler(new EventChannel.StreamHandler() {
             @Override
@@ -76,7 +76,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                         contextToUse.registerReceiver(v2rayBroadCastReceiver, filter);
                     }
                 } catch (Exception e) {
-                    Log.e("FlutterV2rayPlugin", "Failed to register broadcast receiver", e);
+                    Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver", e);
                 }
             }
 
@@ -100,7 +100,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
 
         vpnControlMethod.setMethodCallHandler((call, result) -> {
             switch (call.method) {
-                case "startV2Ray":
+                case "start":
                     AppConfigs.NOTIFICATION_DISCONNECT_BUTTON_NAME = call.argument("notificationDisconnectButtonName");
                     if (Boolean.TRUE.equals(call.argument("proxy_only"))) {
                         V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY);
@@ -111,11 +111,11 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                             call.argument("config"), call.argument("blocked_apps"), call.argument("bypass_subnets"));
                     result.success(null);
                     break;
-                case "stopV2Ray":
+                case "stop":
                     V2rayController.StopV2ray(binding.getApplicationContext());
                     result.success(null);
                     break;
-                case "initializeV2Ray":
+                case "initialize":
                     String iconResourceName = call.argument("notificationIconResourceName");
                     String iconResourceType = call.argument("notificationIconResourceType");
                     int iconResourceId = binding.getApplicationContext().getResources().getIdentifier(iconResourceName,
@@ -128,7 +128,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                     }
                     V2rayController.init(binding.getApplicationContext(),
                             iconResourceId,
-                            "Flutter V2ray");
+                            "Flutter Xray");
                     result.success(null);
                     break;
                 case "getServerDelay":
@@ -183,7 +183,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                             List<String> logs = LogcatManager.getInstance().getLogs(packageName);
                             result.success(logs);
                         } catch (Exception e) {
-                            Log.e("FlutterV2rayPlugin", "Failed to get logs", e);
+                            Log.e("FlutterXrayPlugin", "Failed to get logs", e);
                             result.error("LOG_ERROR", "Failed to retrieve logs: " + e.getMessage(), null);
                         }
                     });
@@ -194,7 +194,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                             boolean success = LogcatManager.getInstance().clearLogs();
                             result.success(success);
                         } catch (Exception e) {
-                            Log.e("FlutterV2rayPlugin", "Failed to clear logs", e);
+                            Log.e("FlutterXrayPlugin", "Failed to clear logs", e);
                             result.error("LOG_ERROR", "Failed to clear logs: " + e.getMessage(), null);
                         }
                     });
@@ -241,7 +241,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                     activity.registerReceiver(v2rayBroadCastReceiver, filter);
                 }
             } catch (Exception e) {
-                Log.e("FlutterV2rayPlugin", "Failed to register broadcast receiver in onAttachedToActivity", e);
+                Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver in onAttachedToActivity", e);
             }
         }
     }
@@ -272,7 +272,7 @@ public class FlutterV2rayPlugin implements FlutterPlugin, ActivityAware, PluginR
                     activity.registerReceiver(v2rayBroadCastReceiver, filter);
                 }
             } catch (Exception e) {
-                Log.e("FlutterV2rayPlugin", "Failed to register broadcast receiver in onReattachedToActivityForConfigChanges", e);
+                Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver in onReattachedToActivityForConfigChanges", e);
             }
         }
     }

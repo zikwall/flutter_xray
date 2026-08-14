@@ -1,10 +1,10 @@
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// Trojan URL parser and adapter to produce V2Ray configuration pieces.
+/// Trojan URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `trojan://` share link into structured fields and exposes
-/// outbound and stream settings compatible with the V2Ray core.
-class TrojanURL extends V2RayURL {
+/// outbound and stream settings compatible with the Xray core.
+class TrojanURL extends XrayURL {
   /// Creates a TrojanURL by parsing the provided trojan share link string.
   ///
   /// Throws [ArgumentError] if the url does not start with `trojan://` or
@@ -77,7 +77,7 @@ class TrojanURL extends V2RayURL {
   @override
   String get remark => Uri.decodeFull(uri.fragment.replaceAll('+', '%20'));
 
-  /// Outbound configuration map for the trojan protocol used by V2Ray core.
+  /// Outbound configuration map for the trojan protocol used by Xray core.
   @override
   Map<String, dynamic> get outbound1 => {
         'tag': 'proxy',

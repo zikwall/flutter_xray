@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.amirzr.flutter_v2ray_client">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
@@ -13,7 +12,7 @@
 
     <application>
         <service
-            android:name="dev.amirzr.flutter_v2ray_client.v2ray.services.V2rayProxyOnlyService"
+            android:name="dev.zikwall.flutter_xray.v2ray.services.V2rayProxyOnlyService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
             android:process=":RunSoLibV2RayDaemon">
@@ -23,7 +22,7 @@
         </service>
 
         <service
-            android:name="dev.amirzr.flutter_v2ray_client.v2ray.services.V2rayVPNService"
+            android:name="dev.zikwall.flutter_xray.v2ray.services.V2rayVPNService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse"

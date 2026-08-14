@@ -1,8 +1,8 @@
-/// Represents the current status of a V2Ray connection.
+/// Represents the current status of an Xray connection.
 ///
-/// This class holds various metrics and state information about the V2Ray
+/// This class holds connection, traffic and state information reported by Xray.
 /// service, including connection duration, speeds, and traffic data.
-class V2RayStatus {
+class XrayStatus {
   /// The duration of the current connection in 'HH:MM:SS' format.
   final String duration;
 
@@ -21,7 +21,7 @@ class V2RayStatus {
   /// The current connection state (e.g., 'CONNECTED', 'DISCONNECTED').
   final String state;
 
-  /// Creates a new V2RayStatus instance with the given parameters.
+  /// Creates a new XrayStatus instance with the given parameters.
   ///
   /// [duration] defaults to '00:00:00' if not provided.
   /// [uploadSpeed] defaults to 0.
@@ -29,7 +29,7 @@ class V2RayStatus {
   /// [upload] defaults to 0.
   /// [download] defaults to 0.
   /// [state] defaults to 'DISCONNECTED'.
-  V2RayStatus({
+  XrayStatus({
     this.duration = '00:00:00',
     this.uploadSpeed = 0,
     this.downloadSpeed = 0,

@@ -1,42 +1,42 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_v2ray_client/url/hysteria.dart';
-import 'package:flutter_v2ray_client/url/shadowsocks.dart';
-import 'package:flutter_v2ray_client/url/socks.dart';
-import 'package:flutter_v2ray_client/url/trojan.dart';
-import 'package:flutter_v2ray_client/url/url.dart';
-import 'package:flutter_v2ray_client/url/vless.dart';
-import 'package:flutter_v2ray_client/url/vmess.dart';
+import 'package:flutter_xray/url/hysteria.dart';
+import 'package:flutter_xray/url/shadowsocks.dart';
+import 'package:flutter_xray/url/socks.dart';
+import 'package:flutter_xray/url/trojan.dart';
+import 'package:flutter_xray/url/url.dart';
+import 'package:flutter_xray/url/vless.dart';
+import 'package:flutter_xray/url/vmess.dart';
 
-import 'flutter_v2ray_platform_interface.dart';
-import 'model/v2ray_status.dart';
+import 'flutter_xray_platform_interface.dart';
+import 'model/xray_status.dart';
 
-export 'model/v2ray_status.dart';
+export 'model/xray_status.dart';
 export 'url/url.dart';
 
-/// A class for managing V2Ray connections and operations.
-/// Provides methods to initialize, start, stop, and query V2Ray services.
-class V2ray {
-  /// Creates a new V2ray instance.
-  /// [onStatusChanged] is a callback function that will be called whenever the V2Ray status changes.
-  V2ray({required this.onStatusChanged});
+/// Controls the embedded Xray core.
+/// Provides methods to initialize, start, stop, and query Xray services.
+class Xray {
+  /// Creates a new Xray instance.
+  /// [onStatusChanged] is called whenever the Xray connection status changes.
+  Xray({required this.onStatusChanged});
 
-  /// Callback function invoked when the V2Ray status changes.
-  /// It receives a [V2RayStatus] object containing details like duration, speeds, and state.
-  final void Function(V2RayStatus status) onStatusChanged;
+  /// Callback function invoked when the Xray status changes.
+  /// It receives an [XrayStatus] with connection and traffic details.
+  final void Function(XrayStatus status) onStatusChanged;
 
-  /// Requests permission to use V2Ray features, such as VPN access on Android.
+  /// Requests permission to use VPN access on Android.
   /// Returns a [Future] that completes with true if permission is granted, otherwise false.
   /// On non-Android platforms, it defaults to granting permission.
   Future<bool> requestPermission() async {
     if (Platform.isAndroid) {
-      return FlutterV2rayPlatform.instance.requestPermission();
+      return FlutterXrayPlatform.instance.requestPermission();
     }
     return true;
   }
 
-  /// Initializes the V2Ray client with notification settings and a status change callback.
+  /// Initializes the Xray client with notification settings and a status callback.
   /// [notificationIconResourceType] specifies the type of the notification icon (e.g., 'mipmap').
   /// [notificationIconResourceName] specifies the name of the notification icon (e.g., 'ic_launcher').
   /// Returns a [Future] that completes when initialization is done.
@@ -44,23 +44,23 @@ class V2ray {
     String notificationIconResourceType = 'mipmap',
     String notificationIconResourceName = 'ic_launcher',
   }) async {
-    await FlutterV2rayPlatform.instance.initializeV2Ray(
+    await FlutterXrayPlatform.instance.initialize(
       onStatusChanged: onStatusChanged,
       notificationIconResourceType: notificationIconResourceType,
       notificationIconResourceName: notificationIconResourceName,
     );
   }
 
-  /// Starts the V2Ray service with the given configuration and settings.
+  /// Starts Xray with the given configuration and settings.
   /// [remark] is a string identifier for the connection.
-  /// [config] is the V2Ray configuration in JSON format.
+  /// [config] is the Xray configuration in JSON format.
   /// [blockedApps] is an optional list of app package names to block.
   /// [bypassSubnets] is an optional list of subnets to bypass the VPN.
   /// [proxyOnly] is a boolean indicating whether to run in proxy-only mode.
   /// [notificationDisconnectButtonName] is the text for the disconnect button in notifications.
   /// Throws an [ArgumentError] if the config is not valid JSON.
   /// Returns a [Future] that completes when the service starts.
-  Future<void> startV2Ray({
+  Future<void> start({
     required String remark,
     required String config,
     List<String>? blockedApps,
@@ -76,7 +76,7 @@ class V2ray {
       throw ArgumentError('The provided string is not valid JSON');
     }
 
-    await FlutterV2rayPlatform.instance.startV2Ray(
+    await FlutterXrayPlatform.instance.start(
       remark: remark,
       config: config,
       blockedApps: blockedApps,
@@ -86,14 +86,14 @@ class V2ray {
     );
   }
 
-  /// Stops the V2Ray service.
+  /// Stops Xray.
   /// Returns a [Future] that completes when the service is stopped.
-  Future<void> stopV2Ray() async {
-    await FlutterV2rayPlatform.instance.stopV2Ray();
+  Future<void> stop() async {
+    await FlutterXrayPlatform.instance.stop();
   }
 
-  /// Measures the delay to a V2Ray server using the provided configuration.
-  /// [config] is the V2Ray configuration in JSON format.
+  /// Measures the delay using the provided Xray configuration.
+  /// [config] is the Xray configuration in JSON format.
   /// [url] is the server URL to test for delay (default is 'https://google.com/generate_204').
   /// Throws an [ArgumentError] if the config is not valid JSON.
   /// Returns a [Future] that completes with the delay in milliseconds.
@@ -108,52 +108,51 @@ class V2ray {
     } catch (_) {
       throw ArgumentError('The provided string is not valid JSON');
     }
-    return FlutterV2rayPlatform.instance
+    return FlutterXrayPlatform.instance
         .getServerDelay(config: config, url: url);
   }
 
-  /// Measures the delay to the currently connected V2Ray server.
+  /// Measures the delay through the current Xray connection.
   /// [url] is the server URL to test for delay (default is 'https://google.com/generate_204').
   /// Returns a [Future] that completes with the delay in milliseconds.
   Future<int> getConnectedServerDelay({
     String url = 'https://google.com/generate_204',
   }) async {
-    return FlutterV2rayPlatform.instance.getConnectedServerDelay(url);
+    return FlutterXrayPlatform.instance.getConnectedServerDelay(url);
   }
 
-  /// Retrieves the version of the V2Ray core.
-  /// Returns a [Future] that completes with a [String] representing the core version.
+  /// Retrieves the version of the embedded Xray core.
   Future<String> getCoreVersion() async {
-    return FlutterV2rayPlatform.instance.getCoreVersion();
+    return FlutterXrayPlatform.instance.getCoreVersion();
   }
 
-  /// Retrieves V2Ray logs from the system logcat.
+  /// Retrieves Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [List] of log lines.
-  /// On Android, this fetches logs filtered by V2Ray related tags.
+  /// On Android, this fetches logs filtered by Xray-related tags.
   /// On non-Android platforms, returns an empty list.
   Future<List<String>> getLogs() async {
     if (Platform.isAndroid) {
-      return FlutterV2rayPlatform.instance.getLogs();
+      return FlutterXrayPlatform.instance.getLogs();
     }
     return [];
   }
 
-  /// Clears the V2Ray logs from the system logcat.
+  /// Clears Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [bool] indicating success.
   /// On Android, this clears the logcat buffer.
   /// On non-Android platforms, returns true.
   Future<bool> clearLogs() async {
     if (Platform.isAndroid) {
-      return FlutterV2rayPlatform.instance.clearLogs();
+      return FlutterXrayPlatform.instance.clearLogs();
     }
     return true;
   }
 
-  /// Parses a V2Ray URL string and returns the corresponding V2RayURL object.
-  /// [url] is the V2Ray share link (e.g., 'vmess://', 'vless://', etc.).
+  /// Parses an Xray-compatible share link.
+  /// [url] is a share link (e.g., 'vmess://', 'vless://', etc.).
   /// Throws an [ArgumentError] if the URL scheme is invalid.
-  /// Returns a [V2RayURL] instance based on the scheme (e.g., VmessURL, VlessURL).
-  static V2RayURL parseFromURL(String url) {
+  /// Returns an [XrayURL] instance based on the scheme.
+  static XrayURL parseFromURL(String url) {
     switch (url.split('://')[0].toLowerCase()) {
       case 'vmess':
         return VmessURL(url: url);

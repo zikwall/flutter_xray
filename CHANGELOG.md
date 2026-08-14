@@ -3,7 +3,7 @@
 Notable changes are recorded here. Versions before the repository transfer were
 released from the legacy `flutter_v2ray_client` project.
 
-## Unreleased
+## 0.1.0 - Unreleased
 
 ### Fixed
 
@@ -14,6 +14,11 @@ released from the legacy `flutter_v2ray_client` project.
 
 - Replace promotional documentation with an Android-focused project reference.
 - Record the embedded core provenance and the supported verification matrix.
+
+### Changed
+
+- Rename the Dart package and public controller API to `flutter_xray` and
+  `Xray`.
 
 ## 3.4.0
 

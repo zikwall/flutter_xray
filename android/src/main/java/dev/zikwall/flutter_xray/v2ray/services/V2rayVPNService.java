@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.services;
+package dev.zikwall.flutter_xray.v2ray.services;
 
 import android.app.Service;
 import android.content.Intent;
@@ -9,10 +9,10 @@ import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
-import dev.amirzr.flutter_v2ray_client.v2ray.core.V2rayCoreManager;
-import dev.amirzr.flutter_v2ray_client.v2ray.interfaces.V2rayServicesListener;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.AppConfigs;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.V2rayConfig;
+import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
+import dev.zikwall.flutter_xray.v2ray.interfaces.V2rayServicesListener;
+import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
+import dev.zikwall.flutter_xray.v2ray.utils.V2rayConfig;
 
 import org.json.JSONArray;
 import org.json.JSONException;

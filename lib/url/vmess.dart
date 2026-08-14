@@ -1,12 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// Vmess URL parser and adapter to produce V2Ray configuration pieces.
+/// VMess URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `vmess://` share link into structured fields and exposes
-/// outbound and stream settings compatible with the V2Ray core.
-class VmessURL extends V2RayURL {
+/// outbound and stream settings compatible with the Xray core.
+class VmessURL extends XrayURL {
   /// Creates a VmessURL by parsing the provided vmess share link string.
   ///
   /// Throws [ArgumentError] if the url does not start with `vmess://` or
@@ -66,7 +66,7 @@ class VmessURL extends V2RayURL {
   @override
   int get port => int.tryParse(rawConfig['port'].toString()) ?? super.port;
 
-  /// Outbound configuration map for the vmess protocol used by V2Ray core.
+  /// Outbound configuration map for the VMess protocol used by Xray core.
   @override
   Map<String, dynamic> get outbound1 => {
         'tag': 'proxy',

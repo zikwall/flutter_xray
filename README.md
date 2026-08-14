@@ -3,10 +3,6 @@
 Android-first Flutter plugin for running an embedded Xray core in VPN or
 proxy-only mode.
 
-The Dart package name remains `flutter_v2ray_client` for compatibility with
-existing applications. The maintained source repository is
-[`zikwall/flutter_xray`](https://github.com/zikwall/flutter_xray).
-
 ## Platform support
 
 | Platform | Status |
@@ -32,7 +28,7 @@ Until a package release is published, depend on a pinned Git revision:
 
 ```yaml
 dependencies:
-  flutter_v2ray_client:
+  flutter_xray:
     git:
       url: https://github.com/zikwall/flutter_xray.git
       ref: <commit-or-tag>
@@ -43,9 +39,9 @@ Do not depend on a moving branch in a production application.
 ## Use
 
 ```dart
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:flutter_xray/flutter_xray.dart';
 
-final xray = V2ray(
+final xray = Xray(
   onStatusChanged: (status) {
     print(status.state);
   },
@@ -56,10 +52,10 @@ await xray.initialize(
   notificationIconResourceName: 'ic_launcher',
 );
 
-final profile = V2ray.parseFromURL('vless://...');
+final profile = Xray.parseFromURL('vless://...');
 
 if (await xray.requestPermission()) {
-  await xray.startV2Ray(
+  await xray.start(
     remark: profile.remark,
     config: profile.getFullConfiguration(),
     blockedApps: const ['com.example.bypass'],
@@ -67,10 +63,10 @@ if (await xray.requestPermission()) {
   );
 }
 
-await xray.stopV2Ray();
+await xray.stop();
 ```
 
-Set `proxyOnly: true` in `startV2Ray` to run the configured local proxy without
+Set `proxyOnly: true` in `start` to run the configured local proxy without
 creating an Android VPN interface.
 
 `blockedApps` contains Android package names excluded from the VPN. It does not

@@ -1,14 +1,14 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint flutter_v2ray.podspec` to validate before publishing.
+# Run `pod lib lint flutter_xray.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'flutter_v2ray_client'
-  s.version          = '1.0.0'
-  s.summary          = 'Flutter client plugin for Xray/V2Ray (Android primary)'
+  s.name             = 'flutter_xray'
+  s.version          = '0.1.0'
+  s.summary          = 'Android-first Flutter client plugin for Xray'
   s.description      = <<-DESC
-Android-first Flutter plugin providing V2Ray/Xray client control.
-iOS bindings are retained for API compatibility but currently unsupported.
+Android-first Flutter plugin providing embedded Xray client control.
+iOS contains a registration stub but VPN operation is currently unsupported.
                        DESC
   s.homepage         = 'https://github.com/zikwall/flutter_xray'
   s.license          = { :file => '../LICENSE' }

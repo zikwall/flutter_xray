@@ -1,12 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// ShadowSocks URL parser and adapter to produce V2Ray configuration pieces.
+/// ShadowSocks URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `ss://` share link into structured fields and exposes
-/// outbound and stream settings compatible with the V2Ray core.
-class ShadowSocksURL extends V2RayURL {
+/// outbound and stream settings compatible with the Xray core.
+class ShadowSocksURL extends XrayURL {
   /// Creates a ShadowSocksURL by parsing the provided ss share link string.
   ///
   /// Throws [ArgumentError] if the url does not start with `ss://` or

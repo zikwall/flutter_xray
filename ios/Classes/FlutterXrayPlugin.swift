@@ -1,11 +1,11 @@
 import Flutter
 import UIKit
 
-public class FlutterV2rayPlugin: NSObject, FlutterPlugin {
+public class FlutterXrayPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
     // iOS support is currently not implemented; keeping channel for API parity.
-    let channel = FlutterMethodChannel(name: "flutter_v2ray_client", binaryMessenger: registrar.messenger())
-    let instance = FlutterV2rayPlugin()
+    let channel = FlutterMethodChannel(name: "flutter_xray", binaryMessenger: registrar.messenger())
+    let instance = FlutterXrayPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 

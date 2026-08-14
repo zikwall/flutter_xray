@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.utils;
+package dev.zikwall.flutter_xray.v2ray.utils;
 
 import android.util.Log;
 
@@ -55,7 +55,7 @@ public class LogcatManager {
             commandSet.add("-s"); // Silent mode - only show specified tags
             // Filter for V2Ray related logs
             commandSet.add("GoLog,tun2socks," + packageName
-                    + ",AndroidRuntime,System.err,V2rayCoreManager,FlutterV2rayPlugin");
+                    + ",AndroidRuntime,System.err,V2rayCoreManager,FlutterXrayPlugin");
 
             Process process = Runtime.getRuntime().exec(commandSet.toArray(new String[0]));
             BufferedReader bufferedReader = new BufferedReader(

@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray_platform_interface.dart';
+import 'package:flutter_xray/flutter_xray.dart';
+import 'package:flutter_xray/flutter_xray_platform_interface.dart';
 
-class FakeFlutterV2rayPlatform extends FlutterV2rayPlatform {
+class FakeFlutterXrayPlatform extends FlutterXrayPlatform {
   String? startedRemark;
   String? startedConfig;
   List<String>? startedBlockedApps;
@@ -11,7 +11,7 @@ class FakeFlutterV2rayPlatform extends FlutterV2rayPlatform {
   int serverDelay = 42;
 
   @override
-  Future<void> startV2Ray({
+  Future<void> start({
     required String remark,
     required String config,
     required String notificationDisconnectButtonName,
@@ -43,9 +43,9 @@ void main() {
       const url =
           'vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCBTZXJ2ZXIiLCJhZGQiOiIxMC4wLjAuMSIsInBvcnQiOiI0NDMiLCJpZCI6IjEyMzQ1Njc4LWFiY2QtMTIzNC1hYmNkLTEyMzQ1Njc4YWJjZCIsImFpZCI6IjAiLCJuZXQiOiJ0Y3AiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiIiwidGxzIjoiIn0=';
 
-      final parsed = V2ray.parseFromURL(url);
+      final parsed = Xray.parseFromURL(url);
 
-      expect(parsed, isA<V2RayURL>());
+      expect(parsed, isA<XrayURL>());
       expect(parsed.remark, 'Test Server');
     });
 
@@ -53,35 +53,35 @@ void main() {
       const url =
           'vless://12345678-abcd-1234-abcd-12345678abcd@10.0.0.1:443?type=tcp&security=tls&sni=example.com#Test VLESS';
 
-      final parsed = V2ray.parseFromURL(url);
+      final parsed = Xray.parseFromURL(url);
 
-      expect(parsed, isA<V2RayURL>());
+      expect(parsed, isA<XrayURL>());
       expect(parsed.remark, 'Test VLESS');
     });
 
     test('rejects invalid and unsupported schemes', () {
-      expect(() => V2ray.parseFromURL('invalid://url'), throwsArgumentError);
+      expect(() => Xray.parseFromURL('invalid://url'), throwsArgumentError);
       expect(
-        () => V2ray.parseFromURL('unsupported://example.com'),
+        () => Xray.parseFromURL('unsupported://example.com'),
         throwsArgumentError,
       );
     });
   });
 
   group('configuration validation and delegation', () {
-    late FakeFlutterV2rayPlatform platform;
-    late V2ray xray;
+    late FakeFlutterXrayPlatform platform;
+    late Xray xray;
 
     setUp(() {
-      platform = FakeFlutterV2rayPlatform();
-      FlutterV2rayPlatform.instance = platform;
-      xray = V2ray(onStatusChanged: (_) {});
+      platform = FakeFlutterXrayPlatform();
+      FlutterXrayPlatform.instance = platform;
+      xray = Xray(onStatusChanged: (_) {});
     });
 
     test('passes a valid configuration and options to the platform', () async {
       const config = '{"inbounds": [], "outbounds": []}';
 
-      await xray.startV2Ray(
+      await xray.start(
         remark: 'Test',
         config: config,
         blockedApps: const ['com.example.bypass'],
@@ -98,7 +98,7 @@ void main() {
 
     test('rejects an invalid start configuration before delegation', () async {
       await expectLater(
-        xray.startV2Ray(
+        xray.start(
           remark: 'Test',
           config: 'invalid json',
           proxyOnly: true,

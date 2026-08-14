@@ -1,15 +1,15 @@
 import 'dart:convert';
 
-/// Base class for parsing and handling V2Ray URLs.
+/// Base class for parsing Xray-compatible share links.
 ///
-/// This abstract class provides common functionality for V2Ray URL parsers,
+/// This abstract class provides common functionality for share-link parsers,
 /// including configuration generation, transport settings, and TLS settings.
 /// Subclasses should implement [outbound1] for specific protocol configurations.
-abstract class V2RayURL {
-  /// Creates a V2RayURL instance with the provided URL string.
+abstract class XrayURL {
+  /// Creates an XrayURL instance with the provided URL string.
   ///
-  /// [url] is the raw V2Ray URL to be parsed by subclasses.
-  V2RayURL({required this.url});
+  /// [url] is the raw share link to be parsed by subclasses.
+  XrayURL({required this.url});
 
   /// The original URL string provided during construction.
   final String url;
@@ -127,7 +127,7 @@ abstract class V2RayURL {
     'balancers': []
   };
 
-  /// Complete V2Ray configuration combining all settings.
+  /// Complete Xray configuration combining all settings.
   Map<String, dynamic> get fullConfiguration => {
         'log': log,
         'inbounds': [inbound],
@@ -136,7 +136,7 @@ abstract class V2RayURL {
         'routing': routing,
       };
 
-  /// Generates the full V2Ray configuration as a formatted JSON string.
+  /// Generates the full Xray configuration as a formatted JSON string.
   ///
   /// [indent] specifies the number of spaces for indentation (default: 2).
   /// Returns a JSON-encoded string of the complete configuration.

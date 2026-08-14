@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.services;
+package dev.zikwall.flutter_xray.v2ray.services;
 
 import static org.junit.Assert.assertEquals;
 

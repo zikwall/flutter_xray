@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.utils;
+package dev.zikwall.flutter_xray.v2ray.utils;
 
 import java.io.Serializable;
 import java.util.ArrayList;

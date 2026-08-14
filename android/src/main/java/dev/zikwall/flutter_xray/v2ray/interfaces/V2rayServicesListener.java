@@ -1,4 +1,4 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.interfaces;
+package dev.zikwall.flutter_xray.v2ray.interfaces;
 
 import android.app.Service;
 

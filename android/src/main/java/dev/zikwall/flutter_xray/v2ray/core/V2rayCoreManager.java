@@ -1,6 +1,6 @@
-package dev.amirzr.flutter_v2ray_client.v2ray.core;
+package dev.zikwall.flutter_xray.v2ray.core;
 
-import static dev.amirzr.flutter_v2ray_client.v2ray.utils.Utilities.getUserAssetsPath;
+import static dev.zikwall.flutter_xray.v2ray.utils.Utilities.getUserAssetsPath;
 
 import android.annotation.SuppressLint;
 import android.app.Notification;
@@ -20,12 +20,12 @@ import android.util.Pair;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
-import dev.amirzr.flutter_v2ray_client.v2ray.interfaces.V2rayServicesListener;
-import dev.amirzr.flutter_v2ray_client.v2ray.services.V2rayProxyOnlyService;
-import dev.amirzr.flutter_v2ray_client.v2ray.services.V2rayVPNService;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.AppConfigs;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.Utilities;
-import dev.amirzr.flutter_v2ray_client.v2ray.utils.V2rayConfig;
+import dev.zikwall.flutter_xray.v2ray.interfaces.V2rayServicesListener;
+import dev.zikwall.flutter_xray.v2ray.services.V2rayProxyOnlyService;
+import dev.zikwall.flutter_xray.v2ray.services.V2rayVPNService;
+import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
+import dev.zikwall.flutter_xray.v2ray.utils.Utilities;
+import dev.zikwall.flutter_xray.v2ray.utils.V2rayConfig;
 
 import org.json.JSONObject;
 

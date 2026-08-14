@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:flutter_xray/flutter_xray.dart';
 import 'log_viewer_page.dart';
 
 void main() {
@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter V2Ray',
+      title: 'Flutter Xray',
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -33,10 +33,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  var v2rayStatus = ValueNotifier<V2RayStatus>(V2RayStatus());
-  late final V2ray flutterV2ray = V2ray(
+  var xrayStatus = ValueNotifier<XrayStatus>(XrayStatus());
+  late final Xray xray = Xray(
     onStatusChanged: (status) {
-      v2rayStatus.value = status;
+      xrayStatus.value = status;
     },
   );
   final config = TextEditingController();
@@ -48,8 +48,8 @@ class _HomePageState extends State<HomePage> {
   String remark = "Default Remark";
 
   void connect() async {
-    if (await flutterV2ray.requestPermission()) {
-      flutterV2ray.startV2Ray(
+    if (await xray.requestPermission()) {
+      xray.start(
         remark: remark,
         config: config.text,
         proxyOnly: proxyOnly,
@@ -70,9 +70,9 @@ class _HomePageState extends State<HomePage> {
       try {
         final String link =
             (await Clipboard.getData('text/plain'))?.text?.trim() ?? '';
-        final V2RayURL v2rayURL = V2ray.parseFromURL(link);
-        remark = v2rayURL.remark;
-        config.text = v2rayURL.getFullConfiguration();
+        final XrayURL profile = Xray.parseFromURL(link);
+        remark = profile.remark;
+        config.text = profile.getFullConfiguration();
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -90,10 +90,10 @@ class _HomePageState extends State<HomePage> {
 
   void delay() async {
     late int delay;
-    if (v2rayStatus.value.state == 'CONNECTED') {
-      delay = await flutterV2ray.getConnectedServerDelay();
+    if (xrayStatus.value.state == 'CONNECTED') {
+      delay = await xray.getConnectedServerDelay();
     } else {
-      delay = await flutterV2ray.getServerDelay(config: config.text);
+      delay = await xray.getServerDelay(config: config.text);
     }
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -143,13 +143,13 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    flutterV2ray
+    xray
         .initialize(
           notificationIconResourceType: "mipmap",
           notificationIconResourceName: "ic_launcher",
         )
         .then((value) async {
-          coreVersion = await flutterV2ray.getCoreVersion();
+          coreVersion = await xray.getCoreVersion();
           setState(() {});
         });
   }
@@ -169,12 +169,12 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 5),
-            const Text('V2Ray Config (json):', style: TextStyle(fontSize: 16)),
+            const Text('Xray config (JSON):', style: TextStyle(fontSize: 16)),
             const SizedBox(height: 5),
             TextFormField(controller: config, maxLines: 10, minLines: 10),
             const SizedBox(height: 10),
             ValueListenableBuilder(
-              valueListenable: v2rayStatus,
+              valueListenable: xrayStatus,
               builder: (context, value, child) {
                 return Column(
                   children: [
@@ -225,7 +225,7 @@ class _HomePageState extends State<HomePage> {
                     child: const Text('Connect'),
                   ),
                   ElevatedButton(
-                    onPressed: () => flutterV2ray.stopV2Ray(),
+                    onPressed: () => xray.stop(),
                     child: const Text('Disconnect'),
                   ),
                   ElevatedButton(
@@ -235,7 +235,7 @@ class _HomePageState extends State<HomePage> {
                   ElevatedButton(
                     onPressed: importConfig,
                     child: const Text(
-                      'Import from v2ray share link (clipboard)',
+                      'Import Xray-compatible share link (clipboard)',
                     ),
                   ),
                   ElevatedButton(

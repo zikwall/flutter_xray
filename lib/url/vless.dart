@@ -1,10 +1,10 @@
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// Vless URL parser and adapter to produce V2Ray configuration pieces.
+/// VLESS URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `vless://` share link into structured fields and exposes
-/// outbound and stream settings compatible with the V2Ray core.
-class VlessURL extends V2RayURL {
+/// outbound and stream settings compatible with the Xray core.
+class VlessURL extends XrayURL {
   /// Creates a VlessURL by parsing the provided vless share link string.
   ///
   /// Throws [ArgumentError] if the url does not start with `vless://` or
@@ -58,7 +58,7 @@ class VlessURL extends V2RayURL {
   @override
   String get remark => Uri.decodeFull(uri.fragment.replaceAll('+', '%20'));
 
-  /// Outbound configuration map for the vless protocol used by V2Ray core.
+  /// Outbound configuration map for the VLESS protocol used by Xray core.
   @override
   Map<String, dynamic> get outbound1 => {
         'tag': 'proxy',

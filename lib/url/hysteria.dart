@@ -1,13 +1,13 @@
 import 'dart:convert';
 
-import 'package:flutter_v2ray_client/url/url.dart';
+import 'package:flutter_xray/url/url.dart';
 
-/// Hysteria URL parser and adapter to produce V2Ray (Xray) configuration pieces.
+/// Hysteria URL parser and adapter to produce Xray configuration pieces.
 ///
 /// It parses a `hysteria2://` / `hy2://` (version 2) or `hysteria://` /
 /// `hy://` (version 1) share link into structured fields and exposes outbound
 /// and stream settings compatible with the Xray core.
-class HysteriaURL extends V2RayURL {
+class HysteriaURL extends XrayURL {
   /// Creates a HysteriaURL by parsing the provided hysteria share link string.
   ///
   /// Throws [ArgumentError] if the url does not use a hysteria scheme or
