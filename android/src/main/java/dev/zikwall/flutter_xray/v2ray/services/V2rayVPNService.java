@@ -2,34 +2,26 @@ package dev.zikwall.flutter_xray.v2ray.services;
 
 import android.app.Service;
 import android.content.Intent;
-import android.net.LocalSocket;
-import android.net.LocalSocketAddress;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
+import dev.zikwall.flutter_xray.tunnel.BadVpnTunnelBackend;
+import dev.zikwall.flutter_xray.tunnel.TunnelBackend;
+import dev.zikwall.flutter_xray.tunnel.TunnelLifecycle;
 import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
 import dev.zikwall.flutter_xray.v2ray.interfaces.V2rayServicesListener;
 import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
 import dev.zikwall.flutter_xray.v2ray.utils.V2rayConfig;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
-
-import java.io.File;
-import java.io.FileDescriptor;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Arrays;
 
 public class V2rayVPNService extends VpnService implements V2rayServicesListener {
     private ParcelFileDescriptor mInterface;
-    private Process process;
     private V2rayConfig v2rayConfig;
-    private volatile boolean isRunning = true;
+    private final TunnelLifecycle tunnelLifecycle = new TunnelLifecycle();
 
     @Override
     public void onCreate() {
@@ -120,9 +112,10 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
         } catch (Exception e) {
             Log.w("V2rayVPNService", "stopForeground failed (service may not be in foreground)", e);
         }
-        isRunning = false;
-        if (process != null) {
-            process.destroy();
+        try {
+            tunnelLifecycle.stop();
+        } catch (Exception e) {
+            Log.e("V2rayVPNService", "Failed to stop tunnel backend", e);
         }
         V2rayCoreManager.getInstance().stopCore();
         try {
@@ -132,7 +125,10 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             Log.e("CANT_STOP", "SELF");
         }
         try {
-            mInterface.close();
+            if (mInterface != null) {
+                mInterface.close();
+                mInterface = null;
+            }
         } catch (Exception e) {
             // ignored
         }
@@ -214,8 +210,18 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
 
         try {
             mInterface = builder.establish();
-            isRunning = true;
-            runTun2socks();
+            if (mInterface == null) {
+                throw new IllegalStateException("Android failed to establish the VPN interface");
+            }
+            TunnelBackend backend = new BadVpnTunnelBackend(
+                    getApplicationContext(),
+                    mInterface.getFileDescriptor(),
+                    v2rayConfig.LOCAL_SOCKS5_PORT,
+                    this::stopAllProcess);
+            if (!tunnelLifecycle.start(backend)) {
+                throw new IllegalStateException(
+                        "Tunnel backend is already active: " + tunnelLifecycle.activeBackendName());
+            }
         } catch (Exception e) {
             Log.e("VPN_SERVICE", "Failed to establish VPN interface", e);
             stopAllProcess();
@@ -223,116 +229,9 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
 
     }
 
-    private void runTun2socks() {
-        ArrayList<String> cmd = new ArrayList<>(
-                Arrays.asList(new File(getApplicationInfo().nativeLibraryDir, "libtun2socks.so").getAbsolutePath(),
-                        "--netif-ipaddr", "26.26.26.2",
-                        "--netif-netmask", "255.255.255.252",
-                        "--socks-server-addr", "127.0.0.1:" + v2rayConfig.LOCAL_SOCKS5_PORT,
-                        "--tunmtu", "1500",
-                        "--sock-path", "sock_path",
-                        "--enable-udprelay",
-                        "--loglevel", "error"));
-        try {
-            ProcessBuilder processBuilder = new ProcessBuilder(cmd);
-            processBuilder.redirectErrorStream(true);
-            process = processBuilder.directory(getApplicationContext().getFilesDir()).start();
-            new Thread(() -> {
-                try {
-                    process.waitFor();
-                    if (isRunning) {
-                        runTun2socks();
-                    }
-                } catch (InterruptedException e) {
-                    // ignore
-                }
-            }, "Tun2socks_Thread").start();
-            sendFileDescriptor();
-        } catch (Exception e) {
-            Log.e("VPN_SERVICE", "FAILED=>", e);
-            this.onDestroy();
-        }
-    }
-
-    private void sendFileDescriptor() {
-        String localSocksFile = new File(getApplicationContext().getFilesDir(), "sock_path").getAbsolutePath();
-        FileDescriptor tunFd = mInterface.getFileDescriptor();
-        new Thread(() -> {
-            long startedAtNanos = System.nanoTime();
-            int failedAttempts = 0;
-            Exception lastError = null;
-            while (isRunning) {
-                long remainingMillis = TunFdRetryPolicy.remainingMillis(
-                        startedAtNanos,
-                        System.nanoTime());
-                if (remainingMillis <= 0L) {
-                    break;
-                }
-
-                long retryDelayMillis = Math.min(
-                        TunFdRetryPolicy.retryDelayMillis(failedAttempts),
-                        remainingMillis);
-                if (retryDelayMillis > 0L) {
-                    try {
-                        Thread.sleep(retryDelayMillis);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-                if (!isRunning || TunFdRetryPolicy.remainingMillis(
-                        startedAtNanos,
-                        System.nanoTime()) <= 0L) {
-                    break;
-                }
-
-                LocalSocket clientLocalSocket = new LocalSocket();
-                try {
-                    clientLocalSocket
-                            .connect(new LocalSocketAddress(localSocksFile, LocalSocketAddress.Namespace.FILESYSTEM));
-                    if (!clientLocalSocket.isConnected()) {
-                        throw new IOException("tun2socks control socket is not connected");
-                    }
-                    OutputStream clientOutStream = clientLocalSocket.getOutputStream();
-                    clientLocalSocket.setFileDescriptorsForSend(new FileDescriptor[] { tunFd });
-                    clientOutStream.write(32);
-                    Log.i(
-                            "SOCK_FILE",
-                            "Sent VPN file descriptor after " + failedAttempts + " failed attempt(s)");
-                    return;
-                } catch (Exception e) {
-                    lastError = e;
-                    failedAttempts += 1;
-                    Log.w(
-                            V2rayVPNService.class.getSimpleName(),
-                            "VPN file descriptor handoff not ready; retrying (attempt "
-                                    + failedAttempts + ")");
-                } finally {
-                    try {
-                        clientLocalSocket.setFileDescriptorsForSend(null);
-                    } catch (Exception ignored) {
-                    }
-                    try {
-                        clientLocalSocket.close();
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-
-            if (isRunning) {
-                Log.e(
-                        V2rayVPNService.class.getSimpleName(),
-                        "VPN file descriptor handoff timed out after " + failedAttempts + " attempt(s)",
-                        lastError);
-                stopAllProcess();
-            }
-        }, "sendFd_Thread").start();
-    }
-
     @Override
     public void onDestroy() {
         Log.i("V2rayVPNService", "onDestroy called - cleaning up resources");
-        isRunning = false;
         
         // Stop the V2ray core
         try {
@@ -350,14 +249,11 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             Log.e("V2rayVPNService", "Error stopping foreground in onDestroy", e);
         }
         
-        // Destroy tun2socks process
+        // Stop the active TUN backend
         try {
-            if (process != null) {
-                process.destroy();
-                process = null;
-            }
+            tunnelLifecycle.stop();
         } catch (Exception e) {
-            Log.e("V2rayVPNService", "Error destroying process in onDestroy", e);
+            Log.e("V2rayVPNService", "Error stopping tunnel backend in onDestroy", e);
         }
         
         // Close VPN interface

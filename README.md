@@ -77,6 +77,11 @@ block those applications from accessing the network.
 See [BUILDING.md](docs/BUILDING.md) for reproducible local checks and
 [TESTING.md](docs/TESTING.md) for the compatibility test matrix.
 
+Clone with `--recurse-submodules` when working on native code. The pinned
+AndroidLibXrayLite and hev-socks5-tunnel sources are build inputs; generated
+native artifacts are not committed. The currently released VPN data path still
+uses the bundled BadVPN tun2socks executable.
+
 ## License and third-party software
 
 The plugin source is licensed under the [MIT License](LICENSE). Embedded and

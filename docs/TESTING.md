@@ -4,6 +4,10 @@ Pull requests run formatting, analysis and unit tests. Changes to the Android
 VPN data path require the relevant physical-device scenarios below before a
 release.
 
+Android unit tests also exercise serialized tunnel ownership, failed-start and
+failed-stop cleanup, concurrent start/stop ordering, idempotency and 100
+connect/disconnect lifecycle cycles. They do not claim packet-path coverage.
+
 | Area | Required scenarios | Evidence |
 | --- | --- | --- |
 | Address families | IPv4-only, IPv6-only, dual stack | public IP and reachability results |

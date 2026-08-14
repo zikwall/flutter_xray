@@ -6,6 +6,18 @@
 - Android SDK and an Android toolchain compatible with the example project;
 - a physical Android device for VPN integration checks.
 
+Clone the repository with its native source inputs:
+
+```shell
+git clone --recurse-submodules https://github.com/zikwall/flutter_xray.git
+```
+
+For an existing clone, initialize them with:
+
+```shell
+git submodule update --init --recursive
+```
+
 ## Fast checks
 
 Run from the repository root:
@@ -59,3 +71,27 @@ successful Gradle build alone is not evidence of 16 KB compatibility.
 Use Android Gradle Plugin 8.5.1 or newer and NDK r28 or newer when native
 dependencies are rebuilt. Prebuilt native libraries must be verified
 individually.
+
+## Native Android inputs
+
+`native/AndroidLibXrayLite` and `native/hev-socks5-tunnel` are pinned git
+submodules. `tool/native/versions.env` locks their expected revisions together
+with Go, gomobile, NDK, Android API, compile SDK, build-tools and ABI inputs. The
+build refuses mismatched or incomplete submodules.
+
+Set `ANDROID_SDK_ROOT` (or `ANDROID_HOME`) and run:
+
+```shell
+./tool/native/check_inputs.sh
+./tool/native/build_android.sh all
+```
+
+Use `xray` or `hev` instead of `all` to build one component. Outputs are written
+to the ignored `native-build/android` directory. `MANIFEST.txt` records every
+locked input and the SHA-256 of each AAR/shared library. The build finishes by
+checking all generated 64-bit ELF files for 16 KB alignment.
+
+The `Native Android build` GitHub Actions workflow performs the same build on a
+clean remote runner and uploads the generated directory. These artifacts are
+build evidence only: this revision does not copy them into `android/libs` or
+`android/src/main/jniLibs`, so the plugin's VPN behavior is unchanged.

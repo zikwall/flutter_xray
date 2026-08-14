@@ -1,4 +1,4 @@
-package dev.zikwall.flutter_xray.v2ray.services;
+package dev.zikwall.flutter_xray.tunnel;
 
 import static org.junit.Assert.assertEquals;
 
@@ -20,18 +20,14 @@ public class TunFdRetryPolicyTest {
     public void remainingTimeUsesMonotonicDeadlineAndNeverBecomesNegative() {
         long startedAt = 10_000L;
 
-        assertEquals(
-                5_000L,
-                TunFdRetryPolicy.remainingMillis(startedAt, startedAt));
+        assertEquals(5_000L, TunFdRetryPolicy.remainingMillis(startedAt, startedAt));
         assertEquals(
                 3_750L,
                 TunFdRetryPolicy.remainingMillis(
-                        startedAt,
-                        startedAt + TimeUnit.MILLISECONDS.toNanos(1_250L)));
+                        startedAt, startedAt + TimeUnit.MILLISECONDS.toNanos(1_250L)));
         assertEquals(
                 0L,
                 TunFdRetryPolicy.remainingMillis(
-                        startedAt,
-                        startedAt + TimeUnit.SECONDS.toNanos(6L)));
+                        startedAt, startedAt + TimeUnit.SECONDS.toNanos(6L)));
     }
 }

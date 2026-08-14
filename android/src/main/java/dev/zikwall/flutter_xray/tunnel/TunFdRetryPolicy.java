@@ -1,4 +1,4 @@
-package dev.zikwall.flutter_xray.v2ray.services;
+package dev.zikwall.flutter_xray.tunnel;
 
 import java.util.concurrent.TimeUnit;
 

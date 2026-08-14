@@ -1,0 +1,6 @@
+[submodule "native/hev-socks5-tunnel"]
+	path = native/hev-socks5-tunnel
+	url = https://github.com/heiher/hev-socks5-tunnel.git
+[submodule "native/AndroidLibXrayLite"]
+	path = native/AndroidLibXrayLite
+	url = https://github.com/2dust/AndroidLibXrayLite.git

@@ -1,0 +1,61 @@
+name: Native Android build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/native-build.yml
+      - native/**
+      - tool/native/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/native-build.yml
+      - native/**
+      - tool/native/**
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Load locked toolchain versions
+        run: |
+          source tool/native/versions.env
+          echo "GO_VERSION=$GO_VERSION" >>"$GITHUB_ENV"
+          echo "ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION" >>"$GITHUB_ENV"
+          echo "ANDROID_COMPILE_SDK=$ANDROID_COMPILE_SDK" >>"$GITHUB_ENV"
+          echo "ANDROID_BUILD_TOOLS=$ANDROID_BUILD_TOOLS" >>"$GITHUB_ENV"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: native/AndroidLibXrayLite/go.sum
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - name: Install locked Android toolchain
+        run: |
+          sdkmanager --install \
+            "platforms;android-$ANDROID_COMPILE_SDK" \
+            "build-tools;$ANDROID_BUILD_TOOLS" \
+            "ndk;$ANDROID_NDK_VERSION"
+      - name: Verify pinned inputs
+        run: ./tool/native/check_inputs.sh
+      - name: Build and verify native artifacts
+        run: ./tool/native/build_android.sh all
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flutter-xray-native-android
+          path: native-build/android
+          if-no-files-found: error
+          retention-days: 14
