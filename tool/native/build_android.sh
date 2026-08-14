@@ -91,7 +91,9 @@ build_hev() {
     APP_PLATFORM="android-$ANDROID_API" \
     NDK_LIBS_OUT="$libraries_directory" \
     NDK_OUT="$objects_directory" \
-    APP_CFLAGS=-O3 \
+    "APP_CFLAGS=-O3 -ffile-prefix-map=$project_directory=/usr/src/flutter_xray \
+      -fmacro-prefix-map=$project_directory=/usr/src/flutter_xray \
+      -DPKGNAME=dev/zikwall/flutter_xray/tunnel -DCLSNAME=HevNative" \
     'APP_LDFLAGS=-Wl,--build-id=none -Wl,--hash-style=gnu'
 
   local abi

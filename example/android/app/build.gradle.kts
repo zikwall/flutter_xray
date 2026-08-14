@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "dev.zikwall.flutter_xray.example"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     compileOptions {

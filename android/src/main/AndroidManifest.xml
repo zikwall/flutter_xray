@@ -11,6 +11,10 @@
         android:minSdkVersion="34" />
 
     <application>
+        <meta-data
+            android:name="dev.zikwall.flutter_xray.TUNNEL_BACKEND"
+            android:value="badvpn" />
+
         <service
             android:name="dev.zikwall.flutter_xray.v2ray.services.V2rayProxyOnlyService"
             android:exported="false"
