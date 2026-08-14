@@ -19,6 +19,10 @@ released from the legacy `flutter_v2ray_client` project.
 
 - Rename the Dart package and public controller API to `flutter_xray` and
   `Xray`.
+- Isolate the existing BadVPN data path behind a serialized `TunnelBackend`
+  lifecycle without changing the selected runtime backend.
+- Pin AndroidLibXrayLite and hev-socks5-tunnel as source submodules and add a
+  reproducible remote Android native build with checksums and 16 KB checks.
 
 ## 3.4.0
 

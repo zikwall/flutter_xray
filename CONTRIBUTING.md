@@ -12,6 +12,10 @@ Before submitting a change:
 5. Run `./tool/verify_android_16k.sh` for native-library changes.
 6. Add or update tests for changed behavior.
 
+Native changes also require a recursive submodule checkout and
+`./tool/native/build_android.sh all`. Keep the revisions and toolchain versions
+in `tool/native/versions.env` synchronized with the gitlinks.
+
 VPN lifecycle, DNS, UDP and native-library changes must also be exercised on a
 physical Android device. Record the device model, Android version, ABI and the
 scenarios tested in the pull request.
