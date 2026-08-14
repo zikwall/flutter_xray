@@ -141,11 +141,11 @@ abstract class XrayURL {
   /// [indent] specifies the number of spaces for indentation (default: 2).
   /// Returns a JSON-encoded string of the complete configuration.
   String getFullConfiguration({int indent = 2}) {
-    return JsonEncoder.withIndent(' ' * indent).convert(
-      removeNulls(
-        Map.from(fullConfiguration),
-      ),
-    );
+    final configuration = removeNulls(Map.from(fullConfiguration));
+    if (indent <= 0) {
+      return jsonEncode(configuration);
+    }
+    return JsonEncoder.withIndent(' ' * indent).convert(configuration);
   }
 
   /// Stream settings for the connection.
@@ -316,28 +316,38 @@ abstract class XrayURL {
     required String? shortId,
     required String? spiderX,
   }) {
-    streamSetting['security'] = streamSecurity;
+    String? nonBlank(String? value) {
+      final normalized = value?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    }
+
+    final security = nonBlank(streamSecurity);
+    streamSetting['security'] = security;
     final tlsSetting = <String, dynamic>{
       'allowInsecure': allowInsecure,
-      'serverName': sni,
-      'alpn': alpns == '' ? null : alpns?.split(','),
+      'serverName': nonBlank(sni),
+      'alpn': nonBlank(alpns)
+          ?.split(',')
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toList(),
       'minVersion': null,
       'maxVersion': null,
       'preferServerCipherSuites': null,
       'cipherSuites': null,
-      'fingerprint': fingerprint,
+      'fingerprint': nonBlank(fingerprint),
       'certificates': null,
       'disableSystemRoot': null,
       'enableSessionResumption': null,
-      'show': false,
-      'publicKey': publicKey,
-      'shortId': shortId,
-      'spiderX': spiderX,
+      'show': security == 'reality' ? false : null,
+      'publicKey': security == 'reality' ? nonBlank(publicKey) : null,
+      'shortId': security == 'reality' ? nonBlank(shortId) : null,
+      'spiderX': security == 'reality' ? nonBlank(spiderX) : null,
     };
-    if (streamSecurity == 'tls') {
+    if (security == 'tls') {
       streamSetting['realitySettings'] = null;
       streamSetting['tlsSettings'] = tlsSetting;
-    } else if (streamSecurity == 'reality') {
+    } else if (security == 'reality') {
       streamSetting['tlsSettings'] = null;
       streamSetting['realitySettings'] = tlsSetting;
     }

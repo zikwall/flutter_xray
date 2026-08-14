@@ -84,3 +84,9 @@ example/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.j
 
 # Misc ignores
 coverage/
+
+# Local physical-device profiles and benchmark evidence may contain bearer
+# credentials. Keep them out of the public repository.
+tool/device/local/
+tool/device/results/
+*.device.local.json

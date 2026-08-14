@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_xray/flutter_xray.dart';
 import 'package:flutter_xray/flutter_xray_platform_interface.dart';
@@ -8,6 +10,7 @@ class FakeFlutterXrayPlatform extends FlutterXrayPlatform {
   List<String>? startedBlockedApps;
   List<String>? startedBypassSubnets;
   bool? startedProxyOnly;
+  String? startedTunnelBackend;
   int serverDelay = 42;
 
   @override
@@ -18,12 +21,14 @@ class FakeFlutterXrayPlatform extends FlutterXrayPlatform {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
+    String? tunnelBackend,
   }) async {
     startedRemark = remark;
     startedConfig = config;
     startedBlockedApps = blockedApps;
     startedBypassSubnets = bypassSubnets;
     startedProxyOnly = proxyOnly;
+    startedTunnelBackend = tunnelBackend;
   }
 
   @override
@@ -57,6 +62,16 @@ void main() {
 
       expect(parsed, isA<XrayURL>());
       expect(parsed.remark, 'Test VLESS');
+      final config = jsonDecode(parsed.getFullConfiguration()) as Map;
+      final outbound = (config['outbounds'] as List).first as Map;
+      final streamSettings = outbound['streamSettings'] as Map;
+      final tlsSettings = streamSettings['tlsSettings'] as Map;
+      expect(tlsSettings.containsKey('publicKey'), isFalse);
+      expect(tlsSettings.containsKey('shortId'), isFalse);
+      expect(tlsSettings.containsKey('spiderX'), isFalse);
+      final compact = parsed.getFullConfiguration(indent: 0);
+      expect(compact.contains('\n'), isFalse);
+      expect(jsonDecode(compact), config);
     });
 
     test('rejects invalid and unsupported schemes', () {
@@ -87,6 +102,7 @@ void main() {
         blockedApps: const ['com.example.bypass'],
         bypassSubnets: const ['192.168.0.0/16'],
         proxyOnly: true,
+        tunnelBackend: TunnelBackend.hev,
       );
 
       expect(platform.startedRemark, 'Test');
@@ -94,6 +110,7 @@ void main() {
       expect(platform.startedBlockedApps, const ['com.example.bypass']);
       expect(platform.startedBypassSubnets, const ['192.168.0.0/16']);
       expect(platform.startedProxyOnly, isTrue);
+      expect(platform.startedTunnelBackend, 'hev');
     });
 
     test('rejects an invalid start configuration before delegation', () async {

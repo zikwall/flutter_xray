@@ -151,7 +151,7 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
 
         TunnelBackendKind backendKind;
         try {
-            backendKind = TunnelBackendSelector.fromManifest(this);
+            backendKind = TunnelBackendSelector.resolve(this, v2rayConfig.TUNNEL_BACKEND);
         } catch (Exception error) {
             Log.e("VPN_SERVICE", "Invalid tunnel backend configuration", error);
             stopAllProcess();
