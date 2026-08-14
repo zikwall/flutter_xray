@@ -68,7 +68,7 @@ build_xray() {
       -target=android \
       -androidapi "$ANDROID_API" \
       -trimpath \
-      -ldflags='-s -w -buildid= -checklinkname=0' \
+      -ldflags="-s -w -buildid= -checklinkname=0 -R=$ANDROID_PAGE_SIZE" \
       -o "$native_output_root/xray/libv2ray.aar" \
       ./
   )
@@ -112,6 +112,7 @@ write_manifest() {
     echo "android_api=$ANDROID_API"
     echo "android_compile_sdk=$ANDROID_COMPILE_SDK"
     echo "android_build_tools=$ANDROID_BUILD_TOOLS"
+    echo "android_page_size=$ANDROID_PAGE_SIZE"
     echo "android_abis=$ANDROID_ABIS"
     echo
     echo "SHA-256"
