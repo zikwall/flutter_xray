@@ -63,87 +63,83 @@ const _directConfig = r'''
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'balanced steady-state Android tunnel benchmark',
-    (tester) async {
-      _validateInputs();
-      final profile = _loadProfile();
-      final schedule = _parseSchedule();
-      String state = 'UNKNOWN';
-      final changes = StreamController<String>.broadcast();
-      final xray = Xray(
-        onStatusChanged: (status) {
-          state = status.state;
-          changes.add(state);
-        },
-      );
-      addTearDown(() async {
-        try {
-          await xray.stop();
-        } finally {
-          await xray.dispose();
-          await changes.close();
+  testWidgets('balanced steady-state Android tunnel benchmark', (tester) async {
+    _validateInputs();
+    final profile = _loadProfile();
+    final schedule = _parseSchedule();
+    String state = 'UNKNOWN';
+    final changes = StreamController<String>.broadcast();
+    final xray = Xray(
+      onStatusChanged: (status) {
+        state = status.state;
+        changes.add(state);
+      },
+    );
+    addTearDown(() async {
+      try {
+        await xray.stop();
+      } finally {
+        await xray.dispose();
+        await changes.close();
+      }
+    });
+
+    await xray.initialize();
+    expect(await xray.requestPermission(), isTrue);
+    debugPrint(
+      'DEVICE_BENCHMARK CONFIG profile=${profile.id} '
+      'phases=${schedule.length} warmup_seconds=$_warmupSeconds '
+      'measure_seconds=$_measureSeconds cooldown_seconds=$_cooldownSeconds '
+      'concurrency=$_concurrency core=${await xray.getCoreVersion()}',
+    );
+
+    final phaseFailures = <String>[];
+    for (var index = 0; index < schedule.length; index += 1) {
+      final backendName = schedule[index];
+      final round = index ~/ 3 + 1;
+      final position = index % 3 + 1;
+      final phaseId = '${profile.id}-r$round-p$position-$backendName';
+      try {
+        await xray.start(
+          remark: 'benchmark $phaseId',
+          config: profile.config,
+          tunnelBackend: _backend(backendName),
+        );
+        await _waitForState(
+          expected: 'CONNECTED',
+          current: () => state,
+          changes: changes.stream,
+        );
+        final probePassed = await _runExternalProbe(
+          phaseId: phaseId,
+          profile: profile.id,
+          backend: backendName,
+          round: round,
+          position: position,
+        );
+        if (!probePassed) {
+          phaseFailures.add('$phaseId(external_probe_failed)');
         }
-      });
-
-      await xray.initialize();
-      expect(await xray.requestPermission(), isTrue);
-      debugPrint(
-        'DEVICE_BENCHMARK CONFIG profile=${profile.id} '
-        'phases=${schedule.length} warmup_seconds=$_warmupSeconds '
-        'measure_seconds=$_measureSeconds cooldown_seconds=$_cooldownSeconds '
-        'concurrency=$_concurrency core=${await xray.getCoreVersion()}',
-      );
-
-      final phaseFailures = <String>[];
-      for (var index = 0; index < schedule.length; index += 1) {
-        final backendName = schedule[index];
-        final round = index ~/ 3 + 1;
-        final position = index % 3 + 1;
-        final phaseId = '${profile.id}-r$round-p$position-$backendName';
-        try {
-          await xray.start(
-            remark: 'benchmark $phaseId',
-            config: profile.config,
-            tunnelBackend: _backend(backendName),
-          );
+      } finally {
+        if (state != 'DISCONNECTED') {
+          await xray.stop();
           await _waitForState(
-            expected: 'CONNECTED',
+            expected: 'DISCONNECTED',
             current: () => state,
             changes: changes.stream,
           );
-          final probePassed = await _runExternalProbe(
-            phaseId: phaseId,
-            profile: profile.id,
-            backend: backendName,
-            round: round,
-            position: position,
-          );
-          if (!probePassed) {
-            phaseFailures.add('$phaseId(external_probe_failed)');
-          }
-        } finally {
-          if (state != 'DISCONNECTED') {
-            await xray.stop();
-            await _waitForState(
-              expected: 'DISCONNECTED',
-              current: () => state,
-              changes: changes.stream,
-            );
-          }
-        }
-        if (index + 1 < schedule.length && _cooldownSeconds > 0) {
-          await Future<void>.delayed(const Duration(seconds: _cooldownSeconds));
         }
       }
-      expect(
-        phaseFailures,
-        isEmpty,
-        reason: 'Invalid benchmark phases: ${phaseFailures.join('; ')}',
-      );
-    },
-    timeout: const Timeout(Duration(minutes: 45)),
-  );
+      if (index + 1 < schedule.length && _cooldownSeconds > 0) {
+        await Future<void>.delayed(const Duration(seconds: _cooldownSeconds));
+      }
+    }
+    expect(
+      phaseFailures,
+      isEmpty,
+      reason: 'Invalid benchmark phases: ${phaseFailures.join('; ')}',
+    );
+  }, timeout: const Timeout(Duration(minutes: 45)));
 }
 
 void _validateInputs() {

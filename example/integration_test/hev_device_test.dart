@@ -116,119 +116,116 @@ const _directConfig = r'''
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'physical-device transport, packet path and lifecycle',
-    (tester) async {
-      String state = 'UNKNOWN';
-      final stateChanges = StreamController<String>.broadcast();
-      final xray = Xray(
-        onStatusChanged: (status) {
-          state = status.state;
-          stateChanges.add(state);
-        },
-      );
-      addTearDown(() async {
-        try {
-          await xray.stop();
-        } finally {
-          await xray.dispose();
-          await stateChanges.close();
-        }
-      });
-
-      await xray.initialize();
-      debugPrint('DEVICE_EVIDENCE CORE version=${await xray.getCoreVersion()}');
-      expect(await xray.requestPermission(), isTrue);
-      final profiles = _loadProfiles();
-      debugPrint(
-        'DEVICE_EVIDENCE CONFIG backend=$_backendName '
-        'profiles=${profiles.length} cycles=$_lifecycleCycles '
-        'profile_runs=$_profileRuns require_udp=$_requireUdp '
-        'hold_seconds=$_holdSeconds',
-      );
-
-      for (var cycle = 0; cycle < _lifecycleCycles; cycle += 1) {
-        await _startAndWait(
-          xray: xray,
-          remark: '$_backendName lifecycle $cycle',
-          config: profiles.first.config,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-        await _stopAndWait(
-          xray: xray,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-        debugPrint('DEVICE_EVIDENCE RECONNECT cycle=${cycle + 1} passed=true');
+  testWidgets('physical-device transport, packet path and lifecycle', (
+    tester,
+  ) async {
+    String state = 'UNKNOWN';
+    final stateChanges = StreamController<String>.broadcast();
+    final xray = Xray(
+      onStatusChanged: (status) {
+        state = status.state;
+        stateChanges.add(state);
+      },
+    );
+    addTearDown(() async {
+      try {
+        await xray.stop();
+      } finally {
+        await xray.dispose();
+        await stateChanges.close();
       }
+    });
 
-      final profileFailures = <String>[];
-      for (var run = 1; run <= _profileRuns; run += 1) {
-        for (final profile in profiles) {
-          debugPrint(
-            'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run started=true',
+    await xray.initialize();
+    debugPrint('DEVICE_EVIDENCE CORE version=${await xray.getCoreVersion()}');
+    expect(await xray.requestPermission(), isTrue);
+    final profiles = _loadProfiles();
+    debugPrint(
+      'DEVICE_EVIDENCE CONFIG backend=$_backendName '
+      'profiles=${profiles.length} cycles=$_lifecycleCycles '
+      'profile_runs=$_profileRuns require_udp=$_requireUdp '
+      'hold_seconds=$_holdSeconds',
+    );
+
+    for (var cycle = 0; cycle < _lifecycleCycles; cycle += 1) {
+      await _startAndWait(
+        xray: xray,
+        remark: '$_backendName lifecycle $cycle',
+        config: profiles.first.config,
+        state: () => state,
+        changes: stateChanges.stream,
+      );
+      await _stopAndWait(
+        xray: xray,
+        state: () => state,
+        changes: stateChanges.stream,
+      );
+      debugPrint('DEVICE_EVIDENCE RECONNECT cycle=${cycle + 1} passed=true');
+    }
+
+    final profileFailures = <String>[];
+    for (var run = 1; run <= _profileRuns; run += 1) {
+      for (final profile in profiles) {
+        debugPrint(
+          'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run started=true',
+        );
+        try {
+          await _startAndWait(
+            xray: xray,
+            remark: '$_backendName ${profile.id} run $run',
+            config: profile.config,
+            state: () => state,
+            changes: stateChanges.stream,
           );
-          try {
-            await _startAndWait(
+          if (_externalProbeOnly) {
+            debugPrint(
+              'DEVICE_EVIDENCE EXTERNAL_PROBE_READY profile=${profile.id} '
+              'hold_seconds=$_holdSeconds',
+            );
+            await Future<void>.delayed(Duration(seconds: _holdSeconds));
+            debugPrint(
+              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
+              'external_probe_window_complete=true',
+            );
+          } else {
+            await _runPacketProbes(profile.id, run: run);
+            debugPrint(
+              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run passed=true',
+            );
+          }
+        } catch (error) {
+          profileFailures.add('${profile.id}: ${error.runtimeType}');
+          debugPrint(
+            'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
+            'passed=false error_type=${error.runtimeType} error=$error',
+          );
+        } finally {
+          if (state != 'DISCONNECTED') {
+            await _stopAndWait(
               xray: xray,
-              remark: '$_backendName ${profile.id} run $run',
-              config: profile.config,
               state: () => state,
               changes: stateChanges.stream,
             );
-            if (_externalProbeOnly) {
-              debugPrint(
-                'DEVICE_EVIDENCE EXTERNAL_PROBE_READY profile=${profile.id} '
-                'hold_seconds=$_holdSeconds',
-              );
-              await Future<void>.delayed(Duration(seconds: _holdSeconds));
-              debugPrint(
-                'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
-                'external_probe_window_complete=true',
-              );
-            } else {
-              await _runPacketProbes(profile.id, run: run);
-              debugPrint(
-                'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run passed=true',
-              );
-            }
-          } catch (error) {
-            profileFailures.add('${profile.id}: ${error.runtimeType}');
-            debugPrint(
-              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
-              'passed=false error_type=${error.runtimeType} error=$error',
-            );
-          } finally {
-            if (state != 'DISCONNECTED') {
-              await _stopAndWait(
-                xray: xray,
-                state: () => state,
-                changes: stateChanges.stream,
-              );
-            }
           }
         }
       }
+    }
 
-      expect(
-        profileFailures,
-        isEmpty,
-        reason:
-            'Physical-device profile failures: ${profileFailures.join(', ')}',
+    expect(
+      profileFailures,
+      isEmpty,
+      reason: 'Physical-device profile failures: ${profileFailures.join(', ')}',
+    );
+
+    if (_checkBlockedApps) {
+      await _runBlockedAppsProbe(
+        xray: xray,
+        config: profiles.first.config,
+        state: () => state,
+        changes: stateChanges.stream,
       );
-
-      if (_checkBlockedApps) {
-        await _runBlockedAppsProbe(
-          xray: xray,
-          config: profiles.first.config,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-      }
-    },
-    timeout: const Timeout(Duration(minutes: 10)),
-  );
+    }
+  }, timeout: const Timeout(Duration(minutes: 10)));
 }
 
 List<_DeviceProfile> _loadProfiles() {
