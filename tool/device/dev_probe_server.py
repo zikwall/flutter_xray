@@ -97,7 +97,7 @@ def handler(state: ProbeState, max_payload: int):
             if parsed.path == "/payload":
                 requested = int(query.get("bytes", ["10000000"])[0])
                 size = max(1, min(requested, max_payload))
-                self._reply(b"x" * size)
+                self._reply_payload(size)
                 return
             if parsed.path == "/dns-source":
                 hostname = query.get("hostname", [""])[0]
@@ -115,6 +115,22 @@ def handler(state: ProbeState, max_payload: int):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _reply_payload(self, size: int) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            chunk = b"x" * min(65536, size)
+            remaining = size
+            try:
+                while remaining > 0:
+                    length = min(len(chunk), remaining)
+                    self.wfile.write(chunk[:length])
+                    remaining -= length
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
         def log_message(self, format: str, *args: object) -> None:
             return

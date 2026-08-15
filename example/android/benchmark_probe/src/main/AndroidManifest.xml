@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Flutter Xray Benchmark Probe"
+        android:supportsRtl="false"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/ProbeTheme">
+        <activity
+            android:name=".BenchmarkProbeActivity"
+            android:configChanges="density|fontScale|keyboardHidden|layoutDirection|locale|orientation|screenSize|smallestScreenSize|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:screenOrientation="locked" />
+    </application>
+</manifest>

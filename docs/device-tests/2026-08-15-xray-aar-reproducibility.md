@@ -53,6 +53,8 @@ for every configured ABI and compiled with the Android plugin unit-test host.
 | App-level UDP DNS to `8.8.8.8:53` over H3 | BadVPN | Timeout at 10 seconds |
 | Home, sleep, wake and post-wake IPv4 request | Xray | Pass |
 | Ten reconnects plus 30-second post-wake hold | Xray | Pass |
+| Corrected H3 throughput matrix | BadVPN / Xray / HEV | 18/18 separate-UID exact-egress phases |
+| Corrected gRPC throughput matrix | BadVPN / Xray / HEV | 18/18 separate-UID exact-egress phases |
 | Foreground-service failure signatures | BadVPN / Xray / HEV | 0 |
 | Daemon crashes | BadVPN / Xray / HEV | 0 |
 
@@ -73,7 +75,17 @@ Earlier focused device runs with the same protector overlay also passed HEV
 H2R and RRV, and produced mixed H2 results. Those transport observations are
 independent of the Xray native TUN acceptance gate above.
 
-## Preliminary three-backend comparison
+## Rejected preliminary three-backend comparison
+
+The short debug comparison below is retained only as rejected historical
+evidence. Its traffic ran inside the `VpnService` owner process. A later
+expected-egress check proved that owner-process traffic could bypass the VPN,
+so neither these numbers nor the former direct-profile baseline may be used to
+rank tunnel backends. The corrected separate-UID method and accepted transport
+matrices are described in
+[`2026-08-15-android-tunnel-benchmark.md`](2026-08-15-android-tunnel-benchmark.md)
+and
+[`2026-08-15-h3-grpc-tunnel-benchmark.md`](2026-08-15-h3-grpc-tunnel-benchmark.md).
 
 Two bounded debug integration runs used the same phone, H3 profile and 5 MB
 download target. Backend order was reversed for the second run to expose order
@@ -85,10 +97,8 @@ and network bias.
 | Xray native TUN | 19.21 Mbps | 16.64 Mbps | 17.93 Mbps | 49.54% | 323,200 KB | 500,081 KB |
 | HEV | 11.40 Mbps | 13.89 Mbps | 12.65 Mbps | 48.24% | 300,830 KB | 466,574 KB |
 
-These are test-harness observations, not release benchmarks. CPU and memory
-include the debug Flutter integration process and short lifecycle phases.
-Battery charge-counter resolution was too coarse for a useful comparison. No
-product-tier or default-backend decision should be derived from this sample.
+These values are invalid as tunnel-throughput observations. No product-tier,
+default-backend or performance decision should be derived from them.
 
 ## Packaging
 
