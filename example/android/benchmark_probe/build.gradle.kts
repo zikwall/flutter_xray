@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.zikwall.flutter_xray.benchmark_probe"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
