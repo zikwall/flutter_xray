@@ -10,8 +10,10 @@ import 'package:flutter_xray/url/vless.dart';
 import 'package:flutter_xray/url/vmess.dart';
 
 import 'flutter_xray_platform_interface.dart';
+import 'model/tunnel_backend.dart';
 import 'model/xray_status.dart';
 
+export 'model/tunnel_backend.dart';
 export 'model/xray_status.dart';
 export 'url/url.dart';
 
@@ -57,6 +59,9 @@ class Xray {
   /// [blockedApps] is an optional list of app package names to block.
   /// [bypassSubnets] is an optional list of subnets to bypass the VPN.
   /// [proxyOnly] is a boolean indicating whether to run in proxy-only mode.
+  /// [tunnelBackend] selects the Android TUN-to-SOCKS implementation for this
+  /// connection. When omitted, the application manifest value is used and
+  /// ultimately falls back to BadVPN for backwards compatibility.
   /// [notificationDisconnectButtonName] is the text for the disconnect button in notifications.
   /// Throws an [ArgumentError] if the config is not valid JSON.
   /// Returns a [Future] that completes when the service starts.
@@ -66,6 +71,7 @@ class Xray {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
+    TunnelBackend? tunnelBackend,
     String notificationDisconnectButtonName = 'DISCONNECT',
   }) async {
     try {
@@ -83,6 +89,7 @@ class Xray {
       proxyOnly: proxyOnly,
       bypassSubnets: bypassSubnets,
       notificationDisconnectButtonName: notificationDisconnectButtonName,
+      tunnelBackend: tunnelBackend?.configValue,
     );
   }
 

@@ -12,6 +12,7 @@ public class V2rayConfig implements Serializable {
     public ArrayList<String> BLOCKED_APPS = null;
     public ArrayList<String> BYPASS_SUBNETS = null;
     public String V2RAY_FULL_JSON_CONFIG = null;
+    public String TUNNEL_BACKEND = null;
     public boolean ENABLE_TRAFFIC_STATICS = false;
     public String REMARK = "";
     public String APPLICATION_NAME;

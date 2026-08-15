@@ -24,8 +24,18 @@ The Android implementation currently embeds
 
 VPN mode contains two TUN-to-SOCKS implementations. BadVPN tun2socks remains
 the compatibility default. The HEV backend is packaged for all supported
-Android ABIs and can be enabled by an application manifest override while it is
-being validated:
+Android ABIs. Select the backend for each connection through `start`:
+
+```dart
+await xray.start(
+  remark: profile.remark,
+  config: profile.getFullConfiguration(),
+  tunnelBackend: TunnelBackend.hev,
+);
+```
+
+When `tunnelBackend` is omitted, the plugin reads the optional application
+manifest fallback below and ultimately defaults to BadVPN:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -38,9 +48,6 @@ being validated:
     </application>
 </manifest>
 ```
-
-The example application's debug build uses HEV. Its release build inherits the
-BadVPN default.
 
 ## Install
 
@@ -78,6 +85,7 @@ if (await xray.requestPermission()) {
   await xray.start(
     remark: profile.remark,
     config: profile.getFullConfiguration(),
+    tunnelBackend: TunnelBackend.hev,
     blockedApps: const ['com.example.bypass'],
     bypassSubnets: const ['192.168.0.0/16'],
   );

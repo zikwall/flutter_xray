@@ -33,23 +33,43 @@ Automated parser and method-channel tests are useful but do not replace the
 physical-device matrix: Android `VpnService`, process lifecycle, UDP, DNS and
 power behavior depend on the operating system and hardware.
 
-## HEV device harness
+## Physical-device harness
 
-The example debug manifest opts into HEV. A credential-free direct Xray profile
-can exercise the local HEV packet path and rapid lifecycle on a physical device:
+The backend is selected explicitly for each run. A credential-free direct Xray
+profile can exercise rapid lifecycle on a physical device:
 
 ```shell
 cd example
 flutter test integration_test/hev_device_test.dart \
   -d <device-id> \
+  --dart-define=FLUTTER_XRAY_DEVICE_BACKEND=hev \
   --dart-define=FLUTTER_XRAY_DEVICE_CYCLES=100 \
   --dart-define=FLUTTER_XRAY_DEVICE_IPV6_URL=https://[2606:4700:4700::1111]/cdn-cgi/trace
 ```
 
-The harness checks IPv4 TCP, optional IPv6 TCP, UDP DNS, a measured download,
-the final disconnected state and rapid connect/disconnect. The first run may
-show Android's VPN permission dialog. It deliberately contains no production
-profile or credentials.
+The harness checks IPv4 TCP, optional IPv6 TCP, UDP DNS, optional download and
+egress, final disconnected state and rapid connect/disconnect. The first run
+may show Android's VPN permission dialog. It deliberately contains no
+production profile or credentials.
+
+For VLESS profiles, prepare an ignored, mode-0600 Dart define file and run the
+same matrix through HEV, BadVPN or both:
+
+```shell
+dart run tool/device/prepare_profile_defines.dart \
+  --source=<private-dev-profiles.json> \
+  --output=tool/device/local/dev.device.local.json \
+  --expected-host=<dev-host>
+
+ADB_BIN=<adb-path> tool/device/run_android_matrix.sh \
+  --device=<device-id> \
+  --defines=tool/device/local/dev.device.local.json \
+  --backends=hev,badvpn
+```
+
+The runner rejects a profile file unless Git ignores it. Evidence is written
+under ignored `tool/device/results/`; bearer links must never be copied into a
+tracked test or document.
 
 For a deterministic LAN UDP check, start the echo helper on the development
 machine and pass its LAN address to the device test:
@@ -69,3 +89,11 @@ HTTP/2, SplitHTTP/H2R, QUIC and meaningful `blockedApps` public-IP comparison
 still require explicit test-server profiles and must be recorded separately.
 `FLUTTER_XRAY_DEVICE_REQUIRE_UDP=false` may be used to isolate lifecycle or TCP
 diagnostics after a UDP failure; such a run is not UDP pass evidence.
+
+Traffic created inside the VPN-owner application is useful for diagnostics,
+but it is not sufficient end-user egress proof. For a separate-UID control,
+set `FLUTTER_XRAY_DEVICE_EXTERNAL_PROBE_ONLY=true` together with a bounded hold
+time, wait for `EXTERNAL_PROBE_READY`, confirm `tun0` and Android's connected
+VPN network, then probe a unique non-cached URL from a separate test app. The
+external probe must verify the expected tunnel egress. A completed hold window
+alone is not a packet-path pass.

@@ -72,10 +72,12 @@ class VlessURL extends XrayURL {
                 {
                   'id': uri.userInfo,
                   'alterId': null,
-                  'security': security,
                   'level': level,
                   'encryption': uri.queryParameters['encryption'] ?? 'none',
-                  'flow': uri.queryParameters['flow'] ?? '',
+                  'flow': switch (uri.queryParameters['flow']) {
+                    final value? when value.isNotEmpty => value,
+                    _ => null,
+                  },
                 }
               ]
             }

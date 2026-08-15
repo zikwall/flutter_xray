@@ -22,4 +22,11 @@ public final class TunnelBackendSelector {
             throw new IllegalStateException("Application metadata is unavailable", error);
         }
     }
+
+    public static TunnelBackendKind resolve(Context context, String requestedValue) {
+        if (requestedValue != null && !requestedValue.trim().isEmpty()) {
+            return TunnelBackendKind.fromConfigValue(requestedValue);
+        }
+        return fromManifest(context);
+    }
 }
