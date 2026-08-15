@@ -14,9 +14,13 @@ public final class TunnelBackendKindTest {
     }
 
     @Test
-    public void acceptsHevAliases() {
+    public void acceptsHev() {
         assertEquals(TunnelBackendKind.HEV, TunnelBackendKind.fromConfigValue("HEV"));
-        assertEquals(TunnelBackendKind.HEV, TunnelBackendKind.fromConfigValue("hev-socks5-tunnel"));
+    }
+
+    @Test
+    public void acceptsXray() {
+        assertEquals(TunnelBackendKind.XRAY, TunnelBackendKind.fromConfigValue("xray"));
     }
 
     @Test

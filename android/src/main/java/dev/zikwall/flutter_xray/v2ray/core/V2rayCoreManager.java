@@ -101,7 +101,10 @@ public final class V2rayCoreManager {
             }
 
             public void onFinish() {
-                countDownTimer.cancel();
+                CountDownTimer timer = countDownTimer;
+                if (timer != null) {
+                    timer.cancel();
+                }
                 if (V2rayCoreManager.getInstance().isV2rayCoreRunning())
                     makeDurationTimer(context, enable_traffic_statics);
             }
@@ -113,6 +116,13 @@ public final class V2rayCoreManager {
             v2rayServicesListener = (V2rayServicesListener) targetService;
         } catch (Exception e) {
             Log.e(V2rayCoreManager.class.getSimpleName(), "attachService failed => ", e);
+        }
+    }
+
+    public synchronized void detachService(Service targetService) {
+        if (v2rayServicesListener != null
+                && v2rayServicesListener.getService() == targetService) {
+            v2rayServicesListener = null;
         }
     }
 
@@ -150,30 +160,11 @@ public final class V2rayCoreManager {
 
                 @Override
                 public long shutdown() {
-                    if (v2rayServicesListener == null) {
-                        Log.e(V2rayCoreManager.class.getSimpleName(), "shutdown failed => can`t find initial service.");
-                        return -1;
-                    }
-                    try {
-                        v2rayServicesListener.stopService();
-                        v2rayServicesListener = null;
-                        return 0;
-                    } catch (Exception e) {
-                        Log.e(V2rayCoreManager.class.getSimpleName(), "shutdown failed =>", e);
-                        return -1;
-                    }
+                    return 0;
                 }
 
                 @Override
                 public long startup() {
-                    if (v2rayServicesListener != null) {
-                        try {
-                            v2rayServicesListener.startService();
-                        } catch (Exception e) {
-                            Log.e(V2rayCoreManager.class.getSimpleName(), "startup failed => ", e);
-                            return -1;
-                        }
-                    }
                     return 0;
                 }
             });
@@ -198,8 +189,25 @@ public final class V2rayCoreManager {
     }
 
     public boolean startCore(final V2rayConfig v2rayConfig) {
-        makeDurationTimer(v2rayServicesListener.getService().getApplicationContext(),
-                v2rayConfig.ENABLE_TRAFFIC_STATICS);
+        return startCore(v2rayConfig, v2rayConfig.V2RAY_FULL_JSON_CONFIG, 0);
+    }
+
+    /** Starts Xray with an already-established Android TUN descriptor. */
+    public boolean startCoreWithTun(
+            final V2rayConfig v2rayConfig,
+            final String nativeTunConfig,
+            final int tunFd) {
+        if (tunFd <= 0) {
+            Log.e(V2rayCoreManager.class.getSimpleName(), "startCoreWithTun failed => invalid TUN fd.");
+            return false;
+        }
+        return startCore(v2rayConfig, nativeTunConfig, tunFd);
+    }
+
+    private synchronized boolean startCore(
+            final V2rayConfig v2rayConfig,
+            final String coreConfig,
+            final int tunFd) {
         V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_CONNECTING;
         if (!isLibV2rayCoreInitialized) {
             Log.e(V2rayCoreManager.class.getSimpleName(),
@@ -207,16 +215,20 @@ public final class V2rayCoreManager {
             return false;
         }
         if (isV2rayCoreRunning()) {
-            stopCore();
+            Log.e(V2rayCoreManager.class.getSimpleName(),
+                    "startCore failed => core is already running.");
+            return false;
         }
         try {
             if (coreController == null) {
                 Log.e(V2rayCoreManager.class.getSimpleName(), "startCore failed => coreController is null.");
                 return false;
             }
-            coreController.startLoop(v2rayConfig.V2RAY_FULL_JSON_CONFIG, 0);
+            coreController.startLoop(coreConfig, tunFd);
             V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_CONNECTED;
             if (isV2rayCoreRunning()) {
+                makeDurationTimer(v2rayServicesListener.getService().getApplicationContext(),
+                        v2rayConfig.ENABLE_TRAFFIC_STATICS);
                 // Refresh the already-started foreground notification with the
                 // connected state. Foreground promotion itself is done by the
                 // service before starting the core.
@@ -229,37 +241,31 @@ public final class V2rayCoreManager {
         return true;
     }
 
-    public void stopCore() {
+    /** Stops only the Xray runtime; the owning VPN lifecycle performs service and TUN cleanup. */
+    public synchronized boolean stopCoreRuntime() {
+        boolean wasRunning = isV2rayCoreRunning();
         try {
-            // Safely cancel notification - handle cases where service might be null
-            if (v2rayServicesListener != null && v2rayServicesListener.getService() != null) {
-                NotificationManager notificationManager = (NotificationManager) v2rayServicesListener.getService()
-                        .getSystemService(Context.NOTIFICATION_SERVICE);
-                if (notificationManager != null) {
-                    notificationManager.cancel(NOTIFICATION_ID);
-                }
+            if (coreController != null) {
+                coreController.cleanupLoop();
             }
-        } catch (Exception e) {
-            Log.w("V2rayCoreManager", "Failed to cancel notification", e);
-        }
-
-        try {
-            if (isV2rayCoreRunning()) {
-                if (coreController != null) {
-                    coreController.stopLoop();
-                }
-                v2rayServicesListener.stopService();
-                Log.e(V2rayCoreManager.class.getSimpleName(), "stopCore success => v2ray core stopped.");
+            if (wasRunning) {
+                Log.i(V2rayCoreManager.class.getSimpleName(), "stopCore success => v2ray core stopped.");
             } else {
-                Log.e(V2rayCoreManager.class.getSimpleName(), "stopCore failed => v2ray core not running.");
+                Log.d(V2rayCoreManager.class.getSimpleName(),
+                        "stopCore cleanup complete => no running core remained.");
             }
-            sendDisconnectedBroadCast();
         } catch (Exception e) {
             Log.e(V2rayCoreManager.class.getSimpleName(), "stopCore failed =>", e);
         }
+        if (countDownTimer != null) {
+            countDownTimer.cancel();
+            countDownTimer = null;
+        }
+        return wasRunning;
     }
 
-    private void sendDisconnectedBroadCast() {
+    /** Publishes DISCONNECTED after the owning Android service has released every resource. */
+    public synchronized void publishDisconnected() {
         V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_DISCONNECTED;
         SERVICE_DURATION = "00:00:00";
         seconds = 0;
@@ -286,6 +292,7 @@ public final class V2rayCoreManager {
         }
         if (countDownTimer != null) {
             countDownTimer.cancel();
+            countDownTimer = null;
         }
     }
 
@@ -326,7 +333,9 @@ public final class V2rayCoreManager {
     }
 
     public boolean showStartupNotification(final String fallbackRemark) {
-        Service context = v2rayServicesListener.getService();
+        Service context = v2rayServicesListener == null
+                ? null
+                : v2rayServicesListener.getService();
         if (context == null) {
             Log.w("V2rayCoreManager", "Cannot show startup notification - service context is null");
             return false;
@@ -375,7 +384,9 @@ public final class V2rayCoreManager {
     }
 
     public boolean showNotification(final V2rayConfig v2rayConfig) {
-        Service context = v2rayServicesListener.getService();
+        Service context = v2rayServicesListener == null
+                ? null
+                : v2rayServicesListener.getService();
         if (context == null) {
             Log.w("V2rayCoreManager", "Cannot show notification - service context is null");
             return false;

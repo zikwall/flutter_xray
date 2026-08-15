@@ -96,6 +96,8 @@ callback required by this plugin. The small, tracked overlay under
 default system-dialer controller. The build exports the pinned submodule into a
 temporary directory and applies the overlay there; it never mutates the
 submodule. The overlay identity and file hashes are recorded in `MANIFEST.txt`.
+The overlay also exposes `CleanupLoop()`, which releases a partially initialized
+core after a startup error; upstream `StopLoop()` only handles a running core.
 The former binary-only `setProtectorServer` extension is deliberately not
 reintroduced.
 

@@ -4,6 +4,7 @@ import java.util.Locale;
 
 public enum TunnelBackendKind {
     BADVPN,
+    XRAY,
     HEV;
 
     public static TunnelBackendKind fromConfigValue(String value) {
@@ -11,10 +12,13 @@ public enum TunnelBackendKind {
             return BADVPN;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        if (normalized.equals("hev") || normalized.equals("hev-socks5-tunnel")) {
+        if (normalized.equals("hev")) {
             return HEV;
         }
-        if (normalized.equals("badvpn") || normalized.equals("badvpn-tun2socks")) {
+        if (normalized.equals("xray")) {
+            return XRAY;
+        }
+        if (normalized.equals("badvpn")) {
             return BADVPN;
         }
         throw new IllegalArgumentException("Unsupported tunnel backend: " + value);

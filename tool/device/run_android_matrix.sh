@@ -4,7 +4,7 @@ set -Eeuo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 device=""
 defines_file=""
-backends="hev,badvpn"
+backends="badvpn,xray,hev"
 background_cycle="false"
 sample_resources="true"
 quick="false"
@@ -13,7 +13,7 @@ declare -a extra_defines=()
 for argument in "$@"; do
   case "${argument}" in
     --help)
-      echo "Usage: $0 [--device=<adb-id>] [--defines=<ignored.device.local.json>] [--backends=hev,badvpn]"
+      echo "Usage: $0 [--device=<adb-id>] [--defines=<ignored.device.local.json>] [--backends=badvpn,xray,hev]"
       echo "          [--quick] [--cycles=N] [--profile-runs=N] [--profile=id]"
       echo "          [--hold-seconds=N] [--require-udp=true|false] [--background-cycle]"
       echo "          [--no-sampling] [--define=NAME=value]"
@@ -81,6 +81,7 @@ if [[ "${quick}" == "true" ]]; then
 fi
 
 package="dev.zikwall.flutter_xray.example"
+fgs_failure_pattern='ForegroundServiceDidNotStartInTimeException|ForegroundServiceStartNotAllowedException|CannotPostForegroundServiceNotificationException|Context.startForegroundService\(\) did not then call Service.startForeground\(\)|startForegroundService\(\) not allowed|Bad notification for startForeground|set service .* to foreground failed|Failed to promote .* service to .*foreground|Exception starting .*foreground service'
 result_root="${repo_root}/tool/device/results/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "${result_root}"
 
@@ -127,13 +128,26 @@ accept_vpn_permission() {
 sample_device() {
   local test_pid="$1"
   local output="$2"
+  local daemon_pid process_ids process_id
   while kill -0 "${test_pid}" 2>/dev/null; do
+    daemon_pid=$("${adb_bin}" -s "${device}" shell pidof \
+      "${package}:RunSoLibV2RayDaemon" 2>/dev/null | tr -d '\r' || true)
+    if [[ -z "${daemon_pid}" ]]; then
+      sleep 1
+      continue
+    fi
     {
       echo "sample_unix_ms=$(($(date +%s) * 1000))"
-      "${adb_bin}" -s "${device}" shell top -b -n 1 2>/dev/null \
-        | grep "${package}" || true
-      "${adb_bin}" -s "${device}" shell dumpsys meminfo "${package}" 2>/dev/null \
-        | grep -E 'TOTAL PSS:|TOTAL RSS:' || true
+      process_ids=$("${adb_bin}" -s "${device}" shell pidof \
+        "${package}" "${package}:RunSoLibV2RayDaemon" 2>/dev/null | tr -d '\r' || true)
+      for process_id in ${process_ids}; do
+        "${adb_bin}" -s "${device}" shell top -b -n 1 -p "${process_id}" 2>/dev/null \
+          | awk -v expected_pid="${process_id}" \
+            '$1 == expected_pid {printf "process pid=%s cpu_pct=%s res=%s name=%s\n", $1, $9, $6, $12}'
+        "${adb_bin}" -s "${device}" shell dumpsys meminfo "${process_id}" 2>/dev/null \
+          | awk -v expected_pid="${process_id}" \
+            '/TOTAL PSS:/ {printf "memory pid=%s pss_kb=%s rss_kb=%s\n", expected_pid, $3, $6}'
+      done
       "${adb_bin}" -s "${device}" shell dumpsys battery 2>/dev/null \
         | grep -E 'AC powered:|USB powered:|Charge counter:|level:|voltage:|temperature:' || true
     } >>"${output}"
@@ -177,7 +191,7 @@ overall_status=0
 for backend in "${backend_list[@]}"; do
   backend="$(echo "${backend}" | tr -d '[:space:]')"
   case "${backend}" in
-    hev|badvpn) ;;
+    hev|xray|badvpn) ;;
     *) echo "Unsupported backend: ${backend}" >&2; exit 64 ;;
   esac
 
@@ -225,11 +239,51 @@ for backend in "${backend_list[@]}"; do
   wait "${permission_pid}" 2>/dev/null || true
   [[ -z "${sampler_pid}" ]] || wait "${sampler_pid}" 2>/dev/null || true
   [[ -z "${background_pid}" ]] || wait "${background_pid}" 2>/dev/null || true
-  "${adb_bin}" -s "${device}" logcat -d -v threadtime \
-    GoLog:V V2rayCoreManager:V V2rayVPNService:V VPN_SERVICE:V \
-    HevTunnelBackend:V BadVpnTunnelBackend:V '*:S' \
-    >"${result_root}/${backend}.logcat.txt" 2>&1 || true
+  full_logcat="${result_root}/${backend}.logcat.full.tmp"
+  logcat_capture_failures=0
+  if ! "${adb_bin}" -s "${device}" logcat -d -v threadtime \
+      >"${full_logcat}" 2>&1; then
+    logcat_capture_failures=1
+  fi
+  grep -E \
+    "${package}|GoLog|V2rayCoreManager|V2rayVPNService|VPN_SERVICE|HevTunnelBackend|BadVpnTunnelBackend|XrayTunBackend|${fgs_failure_pattern}" \
+    "${full_logcat}" >"${result_root}/${backend}.logcat.txt" || true
+  foreground_service_failures=$(grep -Ec "${fgs_failure_pattern}" \
+    "${full_logcat}" || true)
+  daemon_crashes=$(grep -c \
+    "Process: ${package}:RunSoLibV2RayDaemon" "${full_logcat}" || true)
+  rm -f "${full_logcat}"
+  if [[ "${foreground_service_failures}" != "0" || "${daemon_crashes}" != "0" \
+      || "${logcat_capture_failures}" != "0" ]]; then
+    status=1
+  fi
   grep 'DEVICE_EVIDENCE' "${log_file}" >"${result_root}/${backend}.evidence.txt" || true
+  if [[ -f "${metrics_file}" ]]; then
+    cpu_mean_pct=$(awk '
+      /^sample_unix_ms=/ {split($0,a,"="); current=a[2]; seen[current]=1}
+      /^process / {for(i=1;i<=NF;i++) if($i ~ /^cpu_pct=/){split($i,a,"="); cpu[current]+=a[2]}}
+      END {for(s in seen){sum+=cpu[s]; n++} if(n) printf "%.2f",sum/n; else print "n/a"}
+    ' "${metrics_file}")
+    pss_mean_kb=$(awk '
+      /^sample_unix_ms=/ {split($0,a,"="); current=a[2]; seen[current]=1}
+      /^memory / {for(i=1;i<=NF;i++) if($i ~ /^pss_kb=/){split($i,a,"="); pss[current]+=a[2]}}
+      END {for(s in seen){sum+=pss[s]; n++} if(n) printf "%.0f",sum/n; else print "n/a"}
+    ' "${metrics_file}")
+    rss_mean_kb=$(awk '
+      /^sample_unix_ms=/ {split($0,a,"="); current=a[2]; seen[current]=1}
+      /^memory / {for(i=1;i<=NF;i++) if($i ~ /^rss_kb=/){split($i,a,"="); rss[current]+=a[2]}}
+      END {for(s in seen){sum+=rss[s]; n++} if(n) printf "%.0f",sum/n; else print "n/a"}
+    ' "${metrics_file}")
+    charge_delta_uah=$(awk '
+      /Charge counter:/ {if(!seen){first=$3; seen=1} last=$3}
+      END {if(seen) print last-first; else print "n/a"}
+    ' "${metrics_file}")
+  else
+    cpu_mean_pct="n/a"
+    pss_mean_kb="n/a"
+    rss_mean_kb="n/a"
+    charge_delta_uah="n/a"
+  fi
   {
     echo "backend=${backend}"
     echo "exit_code=${status}"
@@ -238,13 +292,47 @@ for backend in "${backend_list[@]}"; do
     echo "profiles_failed=$(grep -c 'PROFILE .*passed=false' "${log_file}" || true)"
     echo "reconnects_passed=$(grep -c 'RECONNECT .*passed=true' "${log_file}" || true)"
     echo "ipv4_tcp_passed=$(grep -c 'IPV4_TCP .*bytes=' "${log_file}" || true)"
+    echo "ipv6_tcp_passed=$(grep -c 'IPV6_TCP .*bytes=' "${log_file}" || true)"
     echo "udp_probes_passed=$(grep -Ec 'UDP_(DNS|ECHO) .*latency_ms=' "${log_file}" || true)"
+    echo "dns_tunnel_passed=$(grep -c 'DNS_TUNNEL .*latency_ms=' "${log_file}" || true)"
+    echo "dns_source_passed=$(grep -c 'DNS_SOURCE .*matches_tunnel=true' "${log_file}" || true)"
+    echo "blocked_apps_passed=$(grep -c 'BLOCKED_APPS passed=true' "${log_file}" || true)"
+    echo "throughput_samples=$(grep -c 'THROUGHPUT .*mbps=' "${log_file}" || true)"
+    echo "throughput_mean_mbps=$(awk '/DEVICE_EVIDENCE THROUGHPUT/ {for (i=1;i<=NF;i++) if ($i ~ /^mbps=/) {split($i,a,"="); sum+=a[2]; n++}} END {if (n) printf "%.2f", sum/n; else print "n/a"}' "${log_file}")"
+    echo "foreground_service_failures=${foreground_service_failures}"
+    echo "daemon_crashes=${daemon_crashes}"
+    echo "logcat_capture_failures=${logcat_capture_failures}"
+    echo "cpu_mean_pct=${cpu_mean_pct}"
+    echo "pss_mean_kb=${pss_mean_kb}"
+    echo "rss_mean_kb=${rss_mean_kb}"
+    echo "charge_delta_uah=${charge_delta_uah}"
   } >"${summary_file}"
   cat "${summary_file}"
   if [[ "${status}" != "0" ]]; then
     overall_status="${status}"
   fi
 done
+
+comparison_file="${result_root}/comparison.tsv"
+{
+  printf 'backend\texit_code\tprofiles_passed\treconnects_passed\tipv4_tcp\tipv6_tcp\tudp\tdns_tunnel\tdns_source\tblocked_apps\tthroughput_mean_mbps\tcpu_mean_pct\tpss_mean_kb\trss_mean_kb\tcharge_delta_uah\tfgs_failures\tdaemon_crashes\tlogcat_failures\n'
+  for backend in "${backend_list[@]}"; do
+    backend="$(echo "${backend}" | tr -d '[:space:]')"
+    summary_file="${result_root}/${backend}.summary.txt"
+    value() { sed -n "s/^$1=//p" "${summary_file}" | tail -n 1; }
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${backend}" "$(value exit_code)" "$(value profiles_passed)" \
+      "$(value reconnects_passed)" "$(value ipv4_tcp_passed)" \
+      "$(value ipv6_tcp_passed)" "$(value udp_probes_passed)" \
+      "$(value dns_tunnel_passed)" "$(value dns_source_passed)" \
+      "$(value blocked_apps_passed)" "$(value throughput_mean_mbps)" \
+      "$(value cpu_mean_pct)" "$(value pss_mean_kb)" \
+      "$(value rss_mean_kb)" "$(value charge_delta_uah)" \
+      "$(value foreground_service_failures)" "$(value daemon_crashes)" \
+      "$(value logcat_capture_failures)"
+  done
+} >"${comparison_file}"
+cat "${comparison_file}"
 
 echo "Device evidence: ${result_root}"
 exit "${overall_status}"
