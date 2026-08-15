@@ -41,7 +41,16 @@ jobs:
           lib test example/lib example/integration_test tool/device/benchmark_report.dart
       - run: flutter analyze
       - run: flutter test
-      - run: dart pub publish --dry-run
+      - name: Validate publishable package
+        run: |
+          publish_dir="$RUNNER_TEMP/flutter-xray-publish"
+          mkdir -p "$publish_dir"
+          git archive --format=tar HEAD | tar -xf - -C "$publish_dir"
+          (
+            cd "$publish_dir"
+            flutter pub get
+            dart pub publish --dry-run
+          )
       - run: flutter build apk --release --split-per-abi --target-platform android-arm64
         working-directory: example
       - run: ./gradlew testDebugUnitTest lintDebug
