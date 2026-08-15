@@ -75,6 +75,12 @@ independent of the Xray native TUN acceptance gate above.
 
 ## Preliminary three-backend comparison
 
+This short debug comparison is superseded by the position-balanced profile
+baseline in
+[`2026-08-15-android-tunnel-benchmark.md`](2026-08-15-android-tunnel-benchmark.md).
+It remains here as historical evidence of why a single short run must not be
+used to rank the backends.
+
 Two bounded debug integration runs used the same phone, H3 profile and 5 MB
 download target. Backend order was reversed for the second run to expose order
 and network bias.

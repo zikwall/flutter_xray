@@ -1,7 +1,9 @@
 # Test matrix
 
 Recorded device runs live under [`device-tests/`](device-tests/). The current
-native provenance baseline is
+performance baseline is
+[`2026-08-15-android-tunnel-benchmark.md`](device-tests/2026-08-15-android-tunnel-benchmark.md),
+the current native provenance baseline is
 [`2026-08-15-xray-aar-reproducibility.md`](device-tests/2026-08-15-xray-aar-reproducibility.md);
 the original HEV integration baseline remains
 [`2026-08-14-hev-android15.md`](device-tests/2026-08-14-hev-android15.md).
@@ -107,13 +109,73 @@ Useful runner overrides include `--profile=<id>`, `--hold-seconds=<seconds>`,
 private define file. If more than one device is connected, pass
 `--device=<adb-id>`.
 
+## Balanced Android benchmark
+
+Use `run_android_benchmark.sh` for an A/B/C comparison of BadVPN, Xray native
+TUN and HEV. It requires an explicit fixed-payload URL on an isolated dev host;
+there is deliberately no public or production default:
+
+```shell
+tool/device/run_android_benchmark.sh \
+  --url='http://<dev-host>:19001/payload?bytes=256000000' \
+  --device=<adb-id>
+```
+
+The default profile-mode run has six rounds. Each round contains every backend
+once, using all six order permutations so that every backend occupies every
+position equally. A phase has 5 seconds of warm-up, 30 seconds of measured
+traffic and 5 seconds of cooldown. Use the same device, Wi-Fi network, endpoint,
+payload, concurrency and build mode when comparing revisions. `--quick` is only
+a harness smoke test and is not statistical evidence.
+
+The measured interval records:
+
+- transferred bytes and throughput from the traffic generator;
+- cumulative CPU ticks and RSS for every process with the application UID;
+- separate VPN-runtime totals that exclude only the main Flutter process and
+  include the daemon and standalone BadVPN child;
+- thermal status, battery temperature, charge counter and Wi-Fi RSSI;
+- all foreground-service failure signatures and daemon crashes.
+
+RSS is read from `/proc` during traffic. The sampler does not invoke
+`dumpsys meminfo`, because that command can request a process GC and distort
+the measurement. Consequently the PSS columns remain blank unless a future
+separate memory-only sampler supplies them. A powered run records charge data
+but is not valid battery-consumption evidence; use `--require-unplugged` for a
+battery run.
+
+Results are stored under ignored `tool/device/results/benchmark-*/`. The raw
+log, environment, process metrics and phase markers are retained alongside
+`phases.tsv`, `summary.tsv`, `summary.md` and `acceptance.txt`. The command fails
+if the backend counts are unbalanced, any phase reports a transfer error, a
+phase is missing, the test driver fails, a package-related foreground-service
+failure is logged, or the VPN daemon crashes.
+
+The credential-free direct profile isolates the three Android TUN data paths.
+End-to-end transport measurements require exactly one ignored private dev
+profile, selected explicitly:
+
+```shell
+tool/device/run_android_benchmark.sh \
+  --url='http://<dev-host>:19001/payload?bytes=256000000' \
+  --defines=tool/device/local/dev.device.local.json \
+  --profile=<profile-id> \
+  --device=<adb-id>
+```
+
+Run direct, H3 and gRPC as separate balanced comparisons. Do not mix endpoints
+or profiles in one aggregate, and do not infer UDP, DNS-leak, lifecycle,
+background or `blockedApps` coverage from a throughput result; those remain
+separate physical-device matrix scenarios.
+
 For a deterministic UDP/DNS check, copy the ephemeral probe to an isolated dev
 host with explicitly allowed test ports. Do not run persistent probe services
 on a developer workstation and do not reuse a production endpoint:
 
 ```shell
 python3 tool/device/dev_probe_server.py \
-  --http-port=19001 --udp-port=19000 --dns-port=19053
+  --http-port=19001 --udp-port=19000 --dns-port=19053 \
+  --max-payload=256000000
 
 cd example
 flutter test integration_test/hev_device_test.dart -d <device-id> \
