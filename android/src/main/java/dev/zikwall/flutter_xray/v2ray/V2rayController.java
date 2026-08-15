@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 
+import dev.zikwall.flutter_xray.tunnel.TunnelBackendKind;
 import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
 import dev.zikwall.flutter_xray.v2ray.services.V2rayProxyOnlyService;
 import dev.zikwall.flutter_xray.v2ray.services.V2rayVPNService;
@@ -52,8 +53,9 @@ public class V2rayController {
             final String tunnel_backend) {
         AppConfigs.V2RAY_CONFIG = Utilities.parseV2rayJsonFile(remark, config, blocked_apps, bypass_subnets);
         if (AppConfigs.V2RAY_CONFIG == null) {
-            return;
+            throw new IllegalArgumentException("Xray configuration is invalid or has no inbounds array");
         }
+        TunnelBackendKind.fromConfigValue(tunnel_backend);
         AppConfigs.V2RAY_CONFIG.TUNNEL_BACKEND = tunnel_backend;
         Intent start_intent;
         if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY) {
@@ -66,9 +68,19 @@ public class V2rayController {
         start_intent.putExtra("COMMAND", AppConfigs.V2RAY_SERVICE_COMMANDS.START_SERVICE);
         start_intent.putExtra("V2RAY_CONFIG", AppConfigs.V2RAY_CONFIG);
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.N_MR1) {
-            context.startForegroundService(start_intent);
+            try {
+                context.startForegroundService(start_intent);
+            } catch (RuntimeException error) {
+                AppConfigs.V2RAY_CONFIG = null;
+                throw error;
+            }
         } else {
-            context.startService(start_intent);
+            try {
+                context.startService(start_intent);
+            } catch (RuntimeException error) {
+                AppConfigs.V2RAY_CONFIG = null;
+                throw error;
+            }
         }
     }
 
@@ -81,6 +93,9 @@ public class V2rayController {
         } else {
             return;
         }
+        // VpnService may remain system-bound after Context.stopService(). Send
+        // an explicit command so the service releases the VPN interface and
+        // calls stopSelf(). STOP_SERVICE never promotes foreground state.
         stop_intent.putExtra("COMMAND", AppConfigs.V2RAY_SERVICE_COMMANDS.STOP_SERVICE);
         context.startService(stop_intent);
         AppConfigs.V2RAY_CONFIG = null;

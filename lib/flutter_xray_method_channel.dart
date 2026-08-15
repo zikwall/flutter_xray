@@ -48,7 +48,7 @@ class MethodChannelFlutterXray extends FlutterXrayPlatform {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
-    String? tunnelBackend,
+    required String tunnelBackend,
   }) async {
     await methodChannel.invokeMethod('start', {
       'remark': remark,

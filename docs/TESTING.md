@@ -43,7 +43,7 @@ profile can exercise rapid lifecycle on a physical device. The runner detects a
 single connected adb device automatically and does not require an interface:
 
 ```shell
-tool/device/run_android_matrix.sh --quick --backends=hev,badvpn
+tool/device/run_android_matrix.sh --quick --backends=badvpn,xray,hev
 ```
 
 `--quick` performs one TCP packet-path and lifecycle pass per backend without
@@ -67,7 +67,7 @@ may show Android's VPN permission dialog. It deliberately contains no
 production profile or credentials.
 
 For VLESS profiles, prepare an ignored, mode-0600 Dart define file and run the
-same matrix through HEV, BadVPN or both:
+same matrix through all three technical backends:
 
 ```shell
 dart run tool/device/prepare_profile_defines.dart \
@@ -77,7 +77,7 @@ dart run tool/device/prepare_profile_defines.dart \
 
 ADB_BIN=<adb-path> tool/device/run_android_matrix.sh \
   --defines=tool/device/local/dev.device.local.json \
-  --backends=hev,badvpn \
+  --backends=badvpn,xray,hev \
   --cycles=10 \
   --profile-runs=3
 ```
@@ -86,22 +86,46 @@ The runner rejects a profile file unless Git ignores it. Evidence is written
 under ignored `tool/device/results/`; bearer links must never be copied into a
 tracked test or document.
 
+Each backend gets an individual log, evidence file, resource sample and
+summary. The runner also writes `comparison.tsv`. A fair performance run uses
+the same physical device, network, endpoint, profile order, run count and hold
+duration for all three backends. Missing IPv6, DNS-source, app-exclusion or
+battery evidence remains visibly absent; it is never inferred from a TCP pass.
+Any `ForegroundServiceDidNotStartInTimeException`, failed foreground
+promotion, late `set service ... to foreground failed` warning or daemon crash
+makes the run fail even when packet probes happened to pass. In particular,
+rapid reconnect is accepted only when `DISCONNECTED` was published after the
+old Android service released its core, backend and TUN resources. START is
+promoted before config/core/TUN work; STOP must not create or re-promote a
+service, and foreground teardown must happen at most once. Failure to capture
+the post-run Android log also fails the run instead of silently claiming zero
+foreground-service errors.
+
 Useful runner overrides include `--profile=<id>`, `--hold-seconds=<seconds>`,
 `--require-udp=true|false`, `--background-cycle`, `--no-sampling` and repeated
 `--define=NAME=value`. Explicit command-line defines override values from the
 private define file. If more than one device is connected, pass
 `--device=<adb-id>`.
 
-For a deterministic LAN UDP check, start the echo helper on the development
-machine and pass its LAN address to the device test:
+For a deterministic UDP/DNS check, copy the ephemeral probe to an isolated dev
+host with explicitly allowed test ports. Do not run persistent probe services
+on a developer workstation and do not reuse a production endpoint:
 
 ```shell
-dart run tool/device/udp_echo_server.dart 19000
+python3 tool/device/dev_probe_server.py \
+  --http-port=19001 --udp-port=19000 --dns-port=19053
+
 cd example
 flutter test integration_test/hev_device_test.dart -d <device-id> \
-  --dart-define=FLUTTER_XRAY_DEVICE_UDP_ECHO_ADDRESS=<development-machine-ip> \
-  --dart-define=FLUTTER_XRAY_DEVICE_UDP_ECHO_PORT=19000
+  --dart-define=FLUTTER_XRAY_DEVICE_UDP_ECHO_ADDRESS=<dev-host-ip> \
+  --dart-define=FLUTTER_XRAY_DEVICE_UDP_ECHO_PORT=19000 \
+  --dart-define=FLUTTER_XRAY_DEVICE_DNS_PROBE_ADDRESS=<dev-host-ip> \
+  --dart-define=FLUTTER_XRAY_DEVICE_DNS_PROBE_PORT=19053 \
+  '--dart-define=FLUTTER_XRAY_DEVICE_DNS_SOURCE_URL=http://<dev-host-ip>:19001/dns-source?hostname={hostname}'
 ```
+
+Verify UDP ingress before the device run and remove the ephemeral process and
+files afterwards. A public resolver timeout is not controlled UDP evidence.
 
 Set `FLUTTER_XRAY_DEVICE_HOLD_SECONDS` to keep the verified tunnel active while
 the device is sent to background or sleep and CPU, RSS and battery evidence is

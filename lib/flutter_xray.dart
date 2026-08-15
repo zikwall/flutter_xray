@@ -59,9 +59,8 @@ class Xray {
   /// [blockedApps] is an optional list of app package names to block.
   /// [bypassSubnets] is an optional list of subnets to bypass the VPN.
   /// [proxyOnly] is a boolean indicating whether to run in proxy-only mode.
-  /// [tunnelBackend] selects the Android TUN-to-SOCKS implementation for this
-  /// connection. When omitted, the application manifest value is used and
-  /// ultimately falls back to BadVPN for backwards compatibility.
+  /// [tunnelBackend] selects the Android packet tunnel implementation for this
+  /// connection. BadVPN is the explicit package default.
   /// [notificationDisconnectButtonName] is the text for the disconnect button in notifications.
   /// Throws an [ArgumentError] if the config is not valid JSON.
   /// Returns a [Future] that completes when the service starts.
@@ -71,7 +70,7 @@ class Xray {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
-    TunnelBackend? tunnelBackend,
+    TunnelBackend tunnelBackend = TunnelBackend.badVpn,
     String notificationDisconnectButtonName = 'DISCONNECT',
   }) async {
     try {
@@ -89,7 +88,7 @@ class Xray {
       proxyOnly: proxyOnly,
       bypassSubnets: bypassSubnets,
       notificationDisconnectButtonName: notificationDisconnectButtonName,
-      tunnelBackend: tunnelBackend?.configValue,
+      tunnelBackend: tunnelBackend.configValue,
     );
   }
 

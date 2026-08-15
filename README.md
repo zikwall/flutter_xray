@@ -22,9 +22,11 @@ The Android implementation currently embeds
 - Android application exclusion through `blockedApps`;
 - subnet bypass through `bypassSubnets`.
 
-VPN mode contains two TUN-to-SOCKS implementations. BadVPN tun2socks remains
-the compatibility default. The HEV backend is packaged for all supported
-Android ABIs. Select the backend for each connection through `start`:
+VPN mode contains three technical tunnel backends. BadVPN tun2socks remains
+the compatibility default. HEV provides an alternative SOCKS-to-TUN bridge;
+Xray native TUN passes the Android TUN descriptor directly to the embedded
+core and does not start a local bridge. Select the backend for each connection
+through `start`:
 
 ```dart
 await xray.start(
@@ -34,20 +36,18 @@ await xray.start(
 );
 ```
 
-When `tunnelBackend` is omitted, the plugin reads the optional application
-manifest fallback below and ultimately defaults to BadVPN:
+Valid values are `TunnelBackend.badVpn`, `TunnelBackend.xray`, and
+`TunnelBackend.hev`. Product names or speed tiers belong in the consuming
+application, not in this package API.
 
-```xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <application>
-        <meta-data
-            android:name="dev.zikwall.flutter_xray.TUNNEL_BACKEND"
-            android:value="hev"
-            tools:replace="android:value" />
-    </application>
-</manifest>
-```
+When `tunnelBackend` is omitted, the Dart API explicitly sends
+`TunnelBackend.badVpn`. There is no manifest override or hidden product policy.
+
+`TunnelBackend.xray` expects the normal plugin configuration with a local SOCKS
+inbound. Android replaces that inbound in memory with Xray's native `tun`
+inbound, preserves its tag/sniffing identity and passes the established
+`VpnService` file descriptor to the core. The caller's JSON string is not
+modified.
 
 ## Install
 

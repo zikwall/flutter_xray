@@ -13,6 +13,8 @@ import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
 import dev.zikwall.flutter_xray.v2ray.utils.V2rayConfig;
 
 public class V2rayProxyOnlyService extends Service implements V2rayServicesListener {
+    private boolean foregroundActive;
+    private boolean coreReleased;
 
     @Override
     public void onCreate() {
@@ -22,12 +24,6 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (!V2rayCoreManager.getInstance().showStartupNotification(AppConfigs.APPLICATION_NAME)) {
-            Log.e("V2rayProxyOnlyService", "Failed to promote proxy service to startup foreground");
-            stopSelf(startId);
-            return START_NOT_STICKY;
-        }
-
         // Handle null intent case - can happen when service is restarted by system
         if (intent == null) {
             Log.w("V2rayProxyOnlyService", "onStartCommand called with null intent, stopping service");
@@ -46,6 +42,14 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
         }
 
         if (startCommand.equals(AppConfigs.V2RAY_SERVICE_COMMANDS.START_SERVICE)) {
+            // Only START_SERVICE is launched with startForegroundService(). STOP
+            // and diagnostics must not call startForeground() during teardown.
+            if (!V2rayCoreManager.getInstance().showStartupNotification(AppConfigs.APPLICATION_NAME)) {
+                Log.e("V2rayProxyOnlyService", "Failed to promote proxy service to startup foreground");
+                stopSelf(startId);
+                return START_NOT_STICKY;
+            }
+            foregroundActive = true;
             V2rayConfig v2rayConfig = (V2rayConfig) intent.getSerializableExtra("V2RAY_CONFIG");
             if (v2rayConfig == null) {
                 Log.w("V2rayProxyOnlyService", "V2RAY_CONFIG is null, cannot start service");
@@ -53,32 +57,25 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
                 return START_NOT_STICKY;
             }
             if (V2rayCoreManager.getInstance().isV2rayCoreRunning()) {
-                V2rayCoreManager.getInstance().stopCore();
-            }
-            if (!V2rayCoreManager.getInstance().showNotification(v2rayConfig)) {
-                Log.e("V2rayProxyOnlyService", "Failed to promote proxy service to foreground");
-                V2rayCoreManager.getInstance().stopCore();
-                stopSelf(startId);
+                Log.e("V2rayProxyOnlyService", "Cannot start a second proxy session before cleanup completes");
+                stopNow();
                 return START_NOT_STICKY;
             }
             if (!V2rayCoreManager.getInstance().ensureCoreInitialized(this)) {
                 Log.e("V2rayProxyOnlyService", "Failed to initialize v2ray core");
-                V2rayCoreManager.getInstance().stopCore();
-                stopSelf(startId);
+                stopNow();
                 return START_NOT_STICKY;
             }
             if (V2rayCoreManager.getInstance().startCore(v2rayConfig)) {
                 Log.i("V2rayProxyOnlyService", "onStartCommand success => v2ray core started.");
             } else {
                 Log.e("V2rayProxyOnlyService", "Failed to start v2ray core");
-                V2rayCoreManager.getInstance().stopCore();
-                stopSelf(startId);
+                stopNow();
                 return START_NOT_STICKY;
             }
         } else if (startCommand.equals(AppConfigs.V2RAY_SERVICE_COMMANDS.STOP_SERVICE)) {
-            V2rayCoreManager.getInstance().stopCore();
             AppConfigs.V2RAY_CONFIG = null;
-            stopSelf(startId);
+            stopNow();
             return START_NOT_STICKY;
         } else if (startCommand.equals(AppConfigs.V2RAY_SERVICE_COMMANDS.MEASURE_DELAY)) {
             new Thread(() -> {
@@ -97,12 +94,42 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
             stopSelf(startId);
             return START_NOT_STICKY;
         }
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        stopCoreOnce();
+        stopForegroundOnce();
+        V2rayCoreManager.getInstance().publishDisconnected();
+        V2rayCoreManager.getInstance().detachService(this);
         super.onDestroy();
+    }
+
+    private void stopNow() {
+        stopCoreOnce();
+        stopForegroundOnce();
+        stopSelf();
+    }
+
+    private synchronized void stopCoreOnce() {
+        if (coreReleased) {
+            return;
+        }
+        coreReleased = true;
+        V2rayCoreManager.getInstance().stopCoreRuntime();
+    }
+
+    private synchronized void stopForegroundOnce() {
+        if (!foregroundActive) {
+            return;
+        }
+        foregroundActive = false;
+        try {
+            stopForeground(true);
+        } catch (Exception error) {
+            Log.w("V2rayProxyOnlyService", "Failed to stop foreground state", error);
+        }
     }
 
     @Nullable
@@ -121,17 +148,4 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
         return this;
     }
 
-    @Override
-    public void startService() {
-        // ignore
-    }
-
-    @Override
-    public void stopService() {
-        try {
-            stopSelf();
-        } catch (Exception e) {
-            // ignore
-        }
-    }
 }

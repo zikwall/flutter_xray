@@ -101,16 +101,21 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
         vpnControlMethod.setMethodCallHandler((call, result) -> {
             switch (call.method) {
                 case "start":
-                    AppConfigs.NOTIFICATION_DISCONNECT_BUTTON_NAME = call.argument("notificationDisconnectButtonName");
-                    if (Boolean.TRUE.equals(call.argument("proxy_only"))) {
-                        V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY);
-                    } else {
-                        V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN);
+                    try {
+                        AppConfigs.NOTIFICATION_DISCONNECT_BUTTON_NAME = call.argument("notificationDisconnectButtonName");
+                        if (Boolean.TRUE.equals(call.argument("proxy_only"))) {
+                            V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY);
+                        } else {
+                            V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN);
+                        }
+                        V2rayController.StartV2ray(binding.getApplicationContext(), call.argument("remark"),
+                                call.argument("config"), call.argument("blocked_apps"), call.argument("bypass_subnets"),
+                                call.argument("tunnel_backend"));
+                        result.success(null);
+                    } catch (RuntimeException error) {
+                        Log.e("FlutterXrayPlugin", "Failed to start Xray service", error);
+                        result.error("START_FAILED", error.getClass().getSimpleName(), null);
                     }
-                    V2rayController.StartV2ray(binding.getApplicationContext(), call.argument("remark"),
-                            call.argument("config"), call.argument("blocked_apps"), call.argument("bypass_subnets"),
-                            call.argument("tunnel_backend"));
-                    result.success(null);
                     break;
                 case "stop":
                     V2rayController.StopV2ray(binding.getApplicationContext());

@@ -182,7 +182,7 @@ void main() {
             profileFailures.add('${profile.id}: ${error.runtimeType}');
             debugPrint(
               'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
-              'passed=false error_type=${error.runtimeType}',
+              'passed=false error_type=${error.runtimeType} error=$error',
             );
           } finally {
             if (state != 'DISCONNECTED') {
@@ -285,11 +285,14 @@ TunnelBackend _selectedBackend() {
       return TunnelBackend.badVpn;
     case 'hev':
       return TunnelBackend.hev;
+    case 'xray':
+    case 'xray_native_tun':
+      return TunnelBackend.xray;
     default:
       throw ArgumentError.value(
         _backendName,
         'FLUTTER_XRAY_DEVICE_BACKEND',
-        'Expected hev or badvpn',
+        'Expected badvpn, xray, or hev',
       );
   }
 }
@@ -506,7 +509,10 @@ Future<String> _downloadText(Uri uri) async {
     final request = await client.getUrl(uri);
     final response = await request.close().timeout(const Duration(seconds: 30));
     expect(response.statusCode, inInclusiveRange(200, 299));
-    return await utf8.decoder.bind(response).join();
+    return await utf8.decoder
+        .bind(response.timeout(const Duration(seconds: 30)))
+        .join()
+        .timeout(const Duration(seconds: 30));
   } finally {
     client.close(force: true);
   }

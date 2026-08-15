@@ -56,7 +56,7 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
   /// [blockedApps] is an optional list of apps to block.
   /// [bypassSubnets] is an optional list of subnets to bypass.
   /// [proxyOnly] is a boolean indicating whether to use proxy-only mode (default is false).
-  /// [tunnelBackend] is an optional native backend identifier.
+  /// [tunnelBackend] is the native backend identifier selected by the caller.
   /// Returns a [Future] that completes when the connection starts.
   Future<void> start({
     required String remark,
@@ -65,7 +65,7 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
-    String? tunnelBackend,
+    required String tunnelBackend,
   }) {
     throw UnimplementedError('start() has not been implemented.');
   }

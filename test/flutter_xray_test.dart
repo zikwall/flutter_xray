@@ -21,7 +21,7 @@ class FakeFlutterXrayPlatform extends FlutterXrayPlatform {
     List<String>? blockedApps,
     List<String>? bypassSubnets,
     bool proxyOnly = false,
-    String? tunnelBackend,
+    required String tunnelBackend,
   }) async {
     startedRemark = remark;
     startedConfig = config;
@@ -111,6 +111,25 @@ void main() {
       expect(platform.startedBypassSubnets, const ['192.168.0.0/16']);
       expect(platform.startedProxyOnly, isTrue);
       expect(platform.startedTunnelBackend, 'hev');
+    });
+
+    test('passes Xray native TUN backend to platform', () async {
+      await xray.start(
+        remark: 'native tun',
+        config: '{"inbounds": [], "outbounds": []}',
+        tunnelBackend: TunnelBackend.xray,
+      );
+
+      expect(platform.startedTunnelBackend, 'xray');
+    });
+
+    test('uses BadVPN as an explicit default', () async {
+      await xray.start(
+        remark: 'default',
+        config: '{"inbounds": [], "outbounds": []}',
+      );
+
+      expect(platform.startedTunnelBackend, 'badvpn');
     });
 
     test('rejects an invalid start configuration before delegation', () async {
