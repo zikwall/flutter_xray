@@ -1,7 +1,9 @@
 # Test matrix
 
 Recorded device runs live under [`device-tests/`](device-tests/). The latest
-correctness hardening evidence is
+release-readiness evidence is
+[`2026-08-16-release-readiness-hardening.md`](device-tests/2026-08-16-release-readiness-hardening.md).
+The preceding correctness hardening evidence is
 [`2026-08-16-tunnel-correctness-hardening.md`](device-tests/2026-08-16-tunnel-correctness-hardening.md).
 The earlier three-backend packet-path evidence is
 [`2026-08-15-h3-grpc-tunnel-benchmark.md`](device-tests/2026-08-15-h3-grpc-tunnel-benchmark.md),
@@ -221,6 +223,13 @@ backend even when ordinary remote UDP works. A credential-free `freedom`
 profile is likewise suitable for lifecycle isolation, but a resolver timeout
 on that route must be checked against HEV and Xray controls before it is called
 a BadVPN failure.
+
+When an isolated observation host is unavailable, the harness can verify the
+UDP DNS source against Cloudflare's public authoritative debug endpoint. Pass
+`FLUTTER_XRAY_DEVICE_DNS_WHOAMI_ADDRESS=162.159.0.33`; the test queries
+`whoami.cloudflare.com` directly and requires its `remote_ip` TXT value to
+match `FLUTTER_XRAY_DEVICE_EXPECTED_TUNNEL_EGRESS`. This is source evidence for
+that explicit UDP query, not a claim about browser-specific encrypted DNS.
 
 The bundled Android BadVPN fork has two mutually exclusive UDP modes. Use
 `--socks5-udp` with Xray's standard SOCKS5 UDP ASSOCIATE inbound. Do not combine

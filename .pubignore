@@ -1,0 +1,34 @@
+.git/
+.github/
+.idea/
+.vscode/
+
+# Reproducible native inputs and project-only tooling remain in GitHub. Pub
+# consumers receive the verified AAR/shared libraries from android/ instead.
+native/
+native-build/
+tool/
+docs/
+test/
+
+# Android project wrappers and JVM tests are not plugin runtime inputs.
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/settings.gradle
+android/src/test/
+
+# Keep the small example application, but omit device labs and unsupported
+# platform scaffolding from the published archive.
+example/integration_test/
+example/test_driver/
+example/android/benchmark_probe/
+example/ios/
+ios/
+
+**/.DS_Store
+**/.dart_tool/
+**/.gradle/
+**/build/
+**/local.properties
+*.device.local.json

@@ -26,11 +26,6 @@ public class V2rayReceiver extends BroadcastReceiver {
                 return;
             }
 
-            if (vpnStatusSink == null) {
-                Log.w("V2rayReceiver", "vpnStatusSink is null, cannot send status");
-                return;
-            }
-
             ArrayList<String> list = new ArrayList<>();
             String duration = intent.getExtras().getString("DURATION");
             list.add(duration != null ? duration : "00:00:00");
@@ -40,14 +35,18 @@ public class V2rayReceiver extends BroadcastReceiver {
             list.add(String.valueOf(intent.getLongExtra("DOWNLOAD_TRAFFIC", 0)));
 
             Object state = intent.getExtras().getSerializable("STATE");
-            if (state != null) {
+            if (state instanceof dev.zikwall.flutter_xray.v2ray.utils.AppConfigs.V2RAY_STATES) {
+                V2rayController.onConnectionStateChanged(
+                        (dev.zikwall.flutter_xray.v2ray.utils.AppConfigs.V2RAY_STATES) state);
                 String stateStr = state.toString();
                 list.add(stateStr.length() > 6 ? stateStr.substring(6) : stateStr);
             } else {
                 list.add("DISCONNECTED");
             }
 
-            vpnStatusSink.success(list);
+            if (vpnStatusSink != null) {
+                vpnStatusSink.success(list);
+            }
         } catch (Exception e) {
             Log.e("V2rayReceiver", "onReceive failed", e);
         }

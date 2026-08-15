@@ -9,10 +9,26 @@ released from the legacy `flutter_v2ray_client` project.
 
 - Retry the BadVPN tun2socks control-socket handoff for a bounded period and
   stop the VPN cleanly when the file descriptor cannot be delivered.
+- Supervise the BadVPN child with bounded restart/backoff, output draining,
+  unique control sockets and graceful/forced shutdown cleanup.
+- Use standard SOCKS5 UDP mode in BadVPN and add IPv6 to its TUN path.
+- Apply one validated IPv4/IPv6 VPN network plan to BadVPN, Xray native TUN
+  and HEV, including real CIDR exclusion for `bypassSubnets`.
+- Ignore unavailable server-provided `blockedApps` package IDs while still
+  applying installed packages consistently to every tunnel backend.
+- Surface malformed DNS, Android VPN builder and unexpected package-manager
+  failures instead of silently substituting public resolvers.
 - Rebuild the checked-in Xray AAR from the pinned AndroidLibXrayLite source
   instead of relying on an unreproducible binary-only protector extension.
 - Register Android `VpnService.protect` through Xray's default system dialer for
   both TCP and UDP sockets, without the legacy server-specific dialer hook.
+- Harden Android plugin initialization, method-channel completion, receiver
+  ownership and same-service reconnect cleanup.
+- Serialize start/stop in the Flutter application process and synchronize it
+  with the separate VPN-service process, eliminating a rapid-reconnect race.
+- Pass notification metadata and connected-delay requests across the Android
+  process boundary explicitly; proxy-only notification actions now target the
+  service that owns the running core.
 
 ### Documentation
 
@@ -23,8 +39,12 @@ released from the legacy `flutter_v2ray_client` project.
 
 - Rename the Dart package and public controller API to `flutter_xray` and
   `Xray`.
+- Declare Android as the only supported plugin platform instead of publishing
+  a non-functional iOS registration stub.
 - Isolate the existing BadVPN data path behind a serialized `TunnelBackend`
   lifecycle without changing the selected runtime backend.
+- Add caller-selected `TunnelBackend.xray` and `TunnelBackend.hev` alongside
+  the explicit compatibility default `TunnelBackend.badVpn`.
 - Pin AndroidLibXrayLite and hev-socks5-tunnel as source submodules and add a
   reproducible remote Android native build with checksums and 16 KB checks.
 - Verify and install Xray AAR artifacts only when their source revision,

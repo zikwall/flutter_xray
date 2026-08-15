@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -13,29 +15,56 @@ class MethodChannelFlutterXray extends FlutterXrayPlatform {
   /// The event channel used to receive status updates from the native platform.
   final eventChannel = const EventChannel('flutter_xray/status');
 
+  StreamSubscription<Object?>? _statusSubscription;
+
   @override
   Future<void> initialize({
     required void Function(XrayStatus status) onStatusChanged,
+    void Function(Object error, StackTrace stackTrace)? onStatusError,
     required String notificationIconResourceType,
     required String notificationIconResourceName,
   }) async {
-    eventChannel.receiveBroadcastStream().distinct().cast().listen((event) {
-      if (event != null) {
-        onStatusChanged.call(XrayStatus(
-          duration: event[0],
-          uploadSpeed: int.parse(event[1]),
-          downloadSpeed: int.parse(event[2]),
-          upload: int.parse(event[3]),
-          download: int.parse(event[4]),
-          state: event[5],
-        ));
-      }
-    });
-    await methodChannel.invokeMethod(
+    await methodChannel.invokeMethod<void>(
       'initialize',
       {
         'notificationIconResourceType': notificationIconResourceType,
         'notificationIconResourceName': notificationIconResourceName,
+      },
+    );
+    await _statusSubscription?.cancel();
+    _statusSubscription =
+        eventChannel.receiveBroadcastStream().distinct().listen(
+      (event) {
+        try {
+          onStatusChanged(XrayStatus.fromPlatformEvent(event));
+        } catch (error, stackTrace) {
+          if (onStatusError != null) {
+            onStatusError(error, stackTrace);
+          } else {
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stackTrace,
+                library: 'flutter_xray',
+                context: ErrorDescription('while decoding Xray status'),
+              ),
+            );
+          }
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (onStatusError != null) {
+          onStatusError(error, stackTrace);
+        } else {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'flutter_xray',
+              context: ErrorDescription('while receiving Xray status'),
+            ),
+          );
+        }
       },
     );
   }
@@ -50,7 +79,7 @@ class MethodChannelFlutterXray extends FlutterXrayPlatform {
     bool proxyOnly = false,
     required String tunnelBackend,
   }) async {
-    await methodChannel.invokeMethod('start', {
+    await methodChannel.invokeMethod<void>('start', {
       'remark': remark,
       'config': config,
       'blocked_apps': blockedApps,
@@ -63,7 +92,13 @@ class MethodChannelFlutterXray extends FlutterXrayPlatform {
 
   @override
   Future<void> stop() async {
-    await methodChannel.invokeMethod('stop');
+    await methodChannel.invokeMethod<void>('stop');
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _statusSubscription?.cancel();
+    _statusSubscription = null;
   }
 
   @override
@@ -71,48 +106,52 @@ class MethodChannelFlutterXray extends FlutterXrayPlatform {
     required String config,
     required String url,
   }) async {
-    return await methodChannel.invokeMethod('getServerDelay', {
+    final result = await methodChannel.invokeMethod<int>('getServerDelay', {
       'config': config,
       'url': url,
     });
+    return _requireResult(result, 'getServerDelay');
   }
 
   @override
   Future<int> getConnectedServerDelay(String url) async {
-    return await methodChannel
-        .invokeMethod('getConnectedServerDelay', {'url': url});
+    final result = await methodChannel.invokeMethod<int>(
+      'getConnectedServerDelay',
+      {'url': url},
+    );
+    return _requireResult(result, 'getConnectedServerDelay');
   }
 
   @override
   Future<bool> requestPermission() async {
-    return (await methodChannel.invokeMethod('requestPermission')) ?? false;
+    final result = await methodChannel.invokeMethod<bool>('requestPermission');
+    return _requireResult(result, 'requestPermission');
   }
 
   @override
   Future<String> getCoreVersion() async {
-    return await methodChannel.invokeMethod('getCoreVersion');
+    final result = await methodChannel.invokeMethod<String>('getCoreVersion');
+    return _requireResult(result, 'getCoreVersion');
   }
 
   @override
   Future<List<String>> getLogs() async {
-    try {
-      final result = await methodChannel.invokeMethod('getLogs');
-      if (result is List) {
-        return result.cast<String>();
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
+    return await methodChannel.invokeListMethod<String>('getLogs') ?? const [];
   }
 
   @override
   Future<bool> clearLogs() async {
-    try {
-      final result = await methodChannel.invokeMethod('clearLogs');
-      return result == true;
-    } catch (e) {
-      return false;
+    final result = await methodChannel.invokeMethod<bool>('clearLogs');
+    return _requireResult(result, 'clearLogs');
+  }
+
+  T _requireResult<T>(T? result, String method) {
+    if (result == null) {
+      throw PlatformException(
+        code: 'NULL_RESULT',
+        message: '$method returned no result',
+      );
     }
+    return result;
   }
 }

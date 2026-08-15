@@ -43,6 +43,7 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
   /// Returns a [Future] that completes when initialization is done.
   Future<void> initialize({
     required void Function(XrayStatus status) onStatusChanged,
+    void Function(Object error, StackTrace stackTrace)? onStatusError,
     required String notificationIconResourceType,
     required String notificationIconResourceName,
   }) {
@@ -76,6 +77,12 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
     throw UnimplementedError('stop() has not been implemented.');
   }
 
+  /// Releases platform-channel status subscriptions owned by this plugin.
+  /// It does not stop an active VPN connection.
+  Future<void> dispose() {
+    throw UnimplementedError('dispose() has not been implemented.');
+  }
+
   /// Measures delay using the provided Xray configuration and URL.
   /// [config] is the Xray configuration in JSON format.
   /// [url] is the server URL to test.
@@ -103,7 +110,6 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
 
   /// Retrieves Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [List] of log lines.
-  /// On non-Android platforms, returns an empty list.
   Future<List<String>> getLogs() async {
     throw UnimplementedError(
       'getLogs() has not been implemented.',
@@ -112,7 +118,6 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
 
   /// Clears Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [bool] indicating success.
-  /// On non-Android platforms, returns true.
   Future<bool> clearLogs() async {
     throw UnimplementedError(
       'clearLogs() has not been implemented.',

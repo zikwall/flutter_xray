@@ -43,6 +43,7 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
     private Activity activity;
     private Context appContext;
     private BroadcastReceiver v2rayBroadCastReceiver;
+    private boolean statusReceiverRegistered;
     private MethodChannel.Result pendingResult;
 
     @SuppressLint("DiscouragedApi")
@@ -51,50 +52,34 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
         this.appContext = binding.getApplicationContext();
         vpnControlMethod = new MethodChannel(binding.getBinaryMessenger(), "flutter_xray");
         vpnStatusEvent = new EventChannel(binding.getBinaryMessenger(), "flutter_xray/status");
+        try {
+            // Keep lifecycle synchronization active even when Dart temporarily
+            // cancels the optional status stream. The VPN service lives in a
+            // separate Android process, so broadcasts are the state boundary.
+            registerStatusReceiver();
+        } catch (RuntimeException error) {
+            Log.e("FlutterXrayPlugin", "Failed to register lifecycle receiver", error);
+        }
 
         vpnStatusEvent.setStreamHandler(new EventChannel.StreamHandler() {
             @Override
             public void onListen(Object arguments, EventChannel.EventSink events) {
                 vpnStatusSink = events;
                 V2rayReceiver.vpnStatusSink = vpnStatusSink;
-
-                // Register the BroadcastReceiver now that vpnStatusSink is available
-                if (v2rayBroadCastReceiver == null) {
-                    v2rayBroadCastReceiver = new V2rayReceiver();
-                }
-                // Use package-specific intent filter to isolate broadcasts per app
-                String packageName = appContext.getPackageName();
-                IntentFilter filter = new IntentFilter(packageName + ".V2RAY_CONNECTION_INFO");
-
-                // Use application context if activity is null (background service scenario)
-                Context contextToUse = activity != null ? activity : appContext;
-
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        contextToUse.registerReceiver(v2rayBroadCastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-                    } else {
-                        contextToUse.registerReceiver(v2rayBroadCastReceiver, filter);
-                    }
+                    registerStatusReceiver();
                 } catch (Exception e) {
                     Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver", e);
+                    vpnStatusSink = null;
+                    V2rayReceiver.vpnStatusSink = null;
+                    events.error("STATUS_LISTENER_FAILED", e.getMessage(), e.getClass().getSimpleName());
                 }
             }
 
             @Override
             public void onCancel(Object arguments) {
-                if (vpnStatusSink != null)
-                    vpnStatusSink.endOfStream();
-
-                // Unregister the BroadcastReceiver when the stream is canceled
-                if (v2rayBroadCastReceiver != null) {
-                    Context contextToUse = activity != null ? activity : appContext;
-                    try {
-                        contextToUse.unregisterReceiver(v2rayBroadCastReceiver);
-                    } catch (IllegalArgumentException e) {
-                        // Receiver was not registered, ignore
-                    }
-                    v2rayBroadCastReceiver = null;
-                }
+                vpnStatusSink = null;
+                V2rayReceiver.vpnStatusSink = null;
             }
         });
 
@@ -103,39 +88,55 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
                 case "start":
                     try {
                         AppConfigs.NOTIFICATION_DISCONNECT_BUTTON_NAME = call.argument("notificationDisconnectButtonName");
-                        if (Boolean.TRUE.equals(call.argument("proxy_only"))) {
-                            V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY);
-                        } else {
-                            V2rayController.changeConnectionMode(AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN);
-                        }
+                        AppConfigs.V2RAY_CONNECTION_MODES connectionMode =
+                                Boolean.TRUE.equals(call.argument("proxy_only"))
+                                        ? AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY
+                                        : AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN;
                         V2rayController.StartV2ray(binding.getApplicationContext(), call.argument("remark"),
                                 call.argument("config"), call.argument("blocked_apps"), call.argument("bypass_subnets"),
-                                call.argument("tunnel_backend"));
+                                call.argument("tunnel_backend"), connectionMode);
                         result.success(null);
                     } catch (RuntimeException error) {
                         Log.e("FlutterXrayPlugin", "Failed to start Xray service", error);
-                        result.error("START_FAILED", error.getClass().getSimpleName(), null);
+                        result.error("START_FAILED", error.getMessage(), error.getClass().getSimpleName());
                     }
                     break;
                 case "stop":
-                    V2rayController.StopV2ray(binding.getApplicationContext());
-                    result.success(null);
+                    try {
+                        V2rayController.StopV2ray(binding.getApplicationContext());
+                        result.success(null);
+                    } catch (RuntimeException error) {
+                        Log.e("FlutterXrayPlugin", "Failed to stop Xray service", error);
+                        result.error("STOP_FAILED", error.getMessage(), error.getClass().getSimpleName());
+                    }
                     break;
                 case "initialize":
-                    String iconResourceName = call.argument("notificationIconResourceName");
-                    String iconResourceType = call.argument("notificationIconResourceType");
-                    int iconResourceId = binding.getApplicationContext().getResources().getIdentifier(iconResourceName,
-                            iconResourceType, binding.getApplicationContext().getPackageName());
-                    if (iconResourceId == 0) {
-                        iconResourceId = binding.getApplicationContext().getApplicationInfo().icon;
+                    try {
+                        String iconResourceName = call.argument("notificationIconResourceName");
+                        String iconResourceType = call.argument("notificationIconResourceType");
+                        Context context = binding.getApplicationContext();
+                        int iconResourceId = context.getResources().getIdentifier(
+                                iconResourceName, iconResourceType, context.getPackageName());
+                        if (iconResourceId == 0) {
+                            iconResourceId = context.getApplicationInfo().icon;
+                        }
+                        if (iconResourceId == 0) {
+                            iconResourceId = android.R.drawable.stat_sys_warning;
+                        }
+                        CharSequence applicationLabel = context.getApplicationInfo()
+                                .loadLabel(context.getPackageManager());
+                        String applicationName = applicationLabel == null
+                                ? context.getPackageName()
+                                : applicationLabel.toString().trim();
+                        if (applicationName.isEmpty()) {
+                            applicationName = context.getPackageName();
+                        }
+                        V2rayController.init(context, iconResourceId, applicationName);
+                        result.success(null);
+                    } catch (RuntimeException error) {
+                        Log.e("FlutterXrayPlugin", "Failed to initialize Xray", error);
+                        result.error("INITIALIZE_FAILED", error.getMessage(), error.getClass().getSimpleName());
                     }
-                    if (iconResourceId == 0) {
-                        iconResourceId = android.R.drawable.stat_sys_warning;
-                    }
-                    V2rayController.init(binding.getApplicationContext(),
-                            iconResourceId,
-                            "Flutter Xray");
-                    result.success(null);
                     break;
                 case "getServerDelay":
                     executor.submit(() -> {
@@ -143,18 +144,20 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
                             result.success(
                                     V2rayController.getV2rayServerDelay(call.argument("config"), call.argument("url")));
                         } catch (Exception e) {
-                            result.success(-1);
+                            Log.e("FlutterXrayPlugin", "Failed to measure server delay", e);
+                            result.error("DELAY_FAILED", e.getMessage(), e.getClass().getSimpleName());
                         }
                     });
                     break;
                 case "getConnectedServerDelay":
                     executor.submit(() -> {
                         try {
-                            AppConfigs.DELAY_URL = call.argument("url");
                             result.success(
-                                    V2rayController.getConnectedV2rayServerDelay(binding.getApplicationContext()));
+                                    V2rayController.getConnectedV2rayServerDelay(
+                                            binding.getApplicationContext(), call.argument("url")));
                         } catch (Exception e) {
-                            result.success(-1);
+                            Log.e("FlutterXrayPlugin", "Failed to measure connected delay", e);
+                            result.error("DELAY_FAILED", e.getMessage(), e.getClass().getSimpleName());
                         }
                     });
                     break;
@@ -206,6 +209,7 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
                     });
                     break;
                 default:
+                    result.notImplemented();
                     break;
             }
         });
@@ -213,84 +217,42 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        if (v2rayBroadCastReceiver != null) {
-            Context contextToUse = activity != null ? activity : appContext;
-            try {
-                contextToUse.unregisterReceiver(v2rayBroadCastReceiver);
-            } catch (IllegalArgumentException e) {
-                // Receiver was not registered, ignore
-            }
-            v2rayBroadCastReceiver = null;
-        }
+        unregisterStatusReceiver();
+        vpnStatusSink = null;
+        V2rayReceiver.vpnStatusSink = null;
+        failPendingPermission("ENGINE_DETACHED", "Flutter engine detached during VPN permission request");
         vpnControlMethod.setMethodCallHandler(null);
         vpnStatusEvent.setStreamHandler(null);
         executor.shutdown();
+        appContext = null;
     }
 
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
         binding.addActivityResultListener(this);
-        // Register the receiver if vpnStatusSink is already set
-        if (vpnStatusSink != null) {
-            V2rayReceiver.vpnStatusSink = vpnStatusSink;
-            if (v2rayBroadCastReceiver == null) {
-                v2rayBroadCastReceiver = new V2rayReceiver();
-            }
-            // Use package-specific intent filter to isolate broadcasts per app
-            String packageName = appContext.getPackageName();
-            IntentFilter filter = new IntentFilter(packageName + ".V2RAY_CONNECTION_INFO");
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    activity.registerReceiver(v2rayBroadCastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-                } else {
-                    activity.registerReceiver(v2rayBroadCastReceiver, filter);
-                }
-            } catch (Exception e) {
-                Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver in onAttachedToActivity", e);
-            }
-        }
     }
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
-        // No additional cleanup required
+        activity = null;
+        failPendingPermission(
+                "ACTIVITY_DETACHED",
+                "Activity changed before receiving VPN permission result");
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
         activity = binding.getActivity();
         binding.addActivityResultListener(this);
-
-        // Re-register the receiver if vpnStatusSink is already set
-        if (vpnStatusSink != null) {
-            V2rayReceiver.vpnStatusSink = vpnStatusSink;
-            if (v2rayBroadCastReceiver == null) {
-                v2rayBroadCastReceiver = new V2rayReceiver();
-            }
-            // Use package-specific intent filter to isolate broadcasts per app
-            String packageName = appContext.getPackageName();
-            IntentFilter filter = new IntentFilter(packageName + ".V2RAY_CONNECTION_INFO");
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    activity.registerReceiver(v2rayBroadCastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-                } else {
-                    activity.registerReceiver(v2rayBroadCastReceiver, filter);
-                }
-            } catch (Exception e) {
-                Log.e("FlutterXrayPlugin", "Failed to register broadcast receiver in onReattachedToActivityForConfigChanges", e);
-            }
-        }
     }
 
     @Override
     public void onDetachedFromActivity() {
-        // Clear activity and fail any pending permission result to avoid NPEs
         activity = null;
-        if (pendingResult != null) {
-            pendingResult.error("ACTIVITY_DETACHED", "Activity detached before receiving VPN permission result", null);
-            pendingResult = null;
-        }
+        failPendingPermission(
+                "ACTIVITY_DETACHED",
+                "Activity detached before receiving VPN permission result");
     }
 
     @Override
@@ -308,5 +270,52 @@ public class FlutterXrayPlugin implements FlutterPlugin, ActivityAware, PluginRe
 
         result.success(resultCode == Activity.RESULT_OK);
         return true;
+    }
+
+    private void registerStatusReceiver() {
+        if (statusReceiverRegistered) {
+            return;
+        }
+        if (appContext == null) {
+            throw new IllegalStateException("Application context is unavailable");
+        }
+        if (v2rayBroadCastReceiver == null) {
+            v2rayBroadCastReceiver = new V2rayReceiver();
+        }
+        String packageName = appContext.getPackageName();
+        IntentFilter filter = new IntentFilter(packageName + ".V2RAY_CONNECTION_INFO");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.registerReceiver(
+                    v2rayBroadCastReceiver,
+                    filter,
+                    Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            appContext.registerReceiver(v2rayBroadCastReceiver, filter);
+        }
+        statusReceiverRegistered = true;
+    }
+
+    private void unregisterStatusReceiver() {
+        if (!statusReceiverRegistered || appContext == null || v2rayBroadCastReceiver == null) {
+            statusReceiverRegistered = false;
+            v2rayBroadCastReceiver = null;
+            return;
+        }
+        try {
+            appContext.unregisterReceiver(v2rayBroadCastReceiver);
+        } catch (IllegalArgumentException error) {
+            Log.w("FlutterXrayPlugin", "Status receiver was already unregistered", error);
+        } finally {
+            statusReceiverRegistered = false;
+            v2rayBroadCastReceiver = null;
+        }
+    }
+
+    private void failPendingPermission(String code, String message) {
+        MethodChannel.Result result = pendingResult;
+        pendingResult = null;
+        if (result != null) {
+            result.error(code, message, null);
+        }
     }
 }

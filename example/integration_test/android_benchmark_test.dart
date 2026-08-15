@@ -78,7 +78,12 @@ void main() {
         },
       );
       addTearDown(() async {
-        await xray.stop();
+        try {
+          await xray.stop();
+        } finally {
+          await xray.dispose();
+          await changes.close();
+        }
       });
 
       await xray.initialize();

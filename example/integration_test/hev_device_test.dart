@@ -63,6 +63,13 @@ const _dnsProbePort = int.fromEnvironment(
 const _dnsSourceUrl = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_DNS_SOURCE_URL',
 );
+const _dnsWhoamiAddress = String.fromEnvironment(
+  'FLUTTER_XRAY_DEVICE_DNS_WHOAMI_ADDRESS',
+);
+const _dnsWhoamiHostname = String.fromEnvironment(
+  'FLUTTER_XRAY_DEVICE_DNS_WHOAMI_HOSTNAME',
+  defaultValue: 'whoami.cloudflare.com',
+);
 const _expectedDnsSource = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_EXPECTED_DNS_SOURCE',
 );
@@ -121,7 +128,12 @@ void main() {
         },
       );
       addTearDown(() async {
-        await xray.stop();
+        try {
+          await xray.stop();
+        } finally {
+          await xray.dispose();
+          await stateChanges.close();
+        }
       });
 
       await xray.initialize();
@@ -400,6 +412,29 @@ Future<void> _runPacketProbes(String profileId, {required int run}) async {
     }
   }
 
+  if (_dnsWhoamiAddress.isNotEmpty) {
+    final answers = await _udpDnsTxtQuery(
+      InternetAddress(_dnsWhoamiAddress),
+      53,
+      _dnsWhoamiHostname,
+    );
+    final sourceAnswer = answers.where(
+      (answer) => answer.toLowerCase().startsWith('remote_ip:'),
+    );
+    expect(sourceAnswer, isNotEmpty);
+    final source = sourceAnswer.first.split(':').skip(1).join(':').trim();
+    expect(InternetAddress.tryParse(source), isNotNull);
+    final expectedSource =
+        _expectedDnsSource.isEmpty ? _expectedTunnelEgress : _expectedDnsSource;
+    if (expectedSource.isNotEmpty) {
+      expect(source, expectedSource);
+    }
+    debugPrint(
+      'DEVICE_EVIDENCE DNS_SOURCE profile=$profileId '
+      'matches_tunnel=${source == expectedSource}',
+    );
+  }
+
   if (_holdSeconds > 0) {
     debugPrint(
       'DEVICE_EVIDENCE HOLD_STARTED profile=$profileId seconds=$_holdSeconds',
@@ -621,6 +656,135 @@ Future<Duration> _udpDnsQuery(
   } finally {
     socket.close();
   }
+}
+
+Future<List<String>> _udpDnsTxtQuery(
+  InternetAddress server,
+  int port,
+  String hostname,
+) async {
+  final socket = await RawDatagramSocket.bind(
+    server.type == InternetAddressType.IPv6
+        ? InternetAddress.anyIPv6
+        : InternetAddress.anyIPv4,
+    0,
+  );
+  final random = Random.secure();
+  final transactionId = random.nextInt(0x10000);
+  final query = BytesBuilder(copy: false)..add([
+    transactionId >> 8,
+    transactionId & 0xff,
+    0x01,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  ]);
+  for (final label in hostname.split('.')) {
+    final encoded = ascii.encode(label);
+    query
+      ..addByte(encoded.length)
+      ..add(encoded);
+  }
+  query.add([0x00, 0x00, 0x10, 0x00, 0x01]);
+
+  try {
+    final response = socket
+        .where((event) => event == RawSocketEvent.read)
+        .map((_) => socket.receive())
+        .where((datagram) => datagram != null)
+        .cast<Datagram>()
+        .first
+        .timeout(const Duration(seconds: 10));
+    final bytes = query.takeBytes();
+    expect(socket.send(bytes, server, port), bytes.length);
+    final packet = (await response).data;
+    expect(packet.length, greaterThan(12));
+    expect(packet[0], transactionId >> 8);
+    expect(packet[1], transactionId & 0xff);
+    expect(packet[2] & 0x80, 0x80);
+    return _dnsTxtAnswers(packet);
+  } finally {
+    socket.close();
+  }
+}
+
+List<String> _dnsTxtAnswers(Uint8List packet) {
+  if (packet.length < 12) {
+    throw const FormatException('Truncated DNS response');
+  }
+  final questionCount = _dnsUint16(packet, 4);
+  final answerCount = _dnsUint16(packet, 6);
+  var offset = 12;
+  for (var index = 0; index < questionCount; index += 1) {
+    offset = _skipDnsName(packet, offset);
+    if (offset + 4 > packet.length) {
+      throw const FormatException('Truncated DNS question');
+    }
+    offset += 4;
+  }
+
+  final answers = <String>[];
+  for (var index = 0; index < answerCount; index += 1) {
+    offset = _skipDnsName(packet, offset);
+    if (offset + 10 > packet.length) {
+      throw const FormatException('Truncated DNS answer');
+    }
+    final type = _dnsUint16(packet, offset);
+    final dnsClass = _dnsUint16(packet, offset + 2);
+    final dataLength = _dnsUint16(packet, offset + 8);
+    offset += 10;
+    final dataEnd = offset + dataLength;
+    if (dataEnd > packet.length) {
+      throw const FormatException('Truncated DNS answer data');
+    }
+    if (type == 16 && dnsClass == 1) {
+      final text = BytesBuilder(copy: false);
+      while (offset < dataEnd) {
+        final length = packet[offset];
+        offset += 1;
+        if (offset + length > dataEnd) {
+          throw const FormatException('Truncated DNS TXT segment');
+        }
+        text.add(packet.sublist(offset, offset + length));
+        offset += length;
+      }
+      answers.add(utf8.decode(text.takeBytes()));
+    } else {
+      offset = dataEnd;
+    }
+  }
+  return answers;
+}
+
+int _skipDnsName(Uint8List packet, int offset) {
+  while (offset < packet.length) {
+    final length = packet[offset];
+    if (length == 0) return offset + 1;
+    if (length & 0xc0 == 0xc0) {
+      if (offset + 2 > packet.length) {
+        throw const FormatException('Truncated DNS name pointer');
+      }
+      return offset + 2;
+    }
+    if (length & 0xc0 != 0 || offset + 1 + length > packet.length) {
+      throw const FormatException('Invalid DNS name');
+    }
+    offset += 1 + length;
+  }
+  throw const FormatException('Truncated DNS name');
+}
+
+int _dnsUint16(Uint8List packet, int offset) {
+  if (offset + 2 > packet.length) {
+    throw const FormatException('Truncated DNS integer');
+  }
+  return packet[offset] << 8 | packet[offset + 1];
 }
 
 Future<Duration> _udpEcho(InternetAddress server, int port) async {

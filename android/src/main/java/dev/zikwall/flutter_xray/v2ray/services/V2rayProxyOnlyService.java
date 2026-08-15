@@ -44,12 +44,15 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
         if (startCommand.equals(AppConfigs.V2RAY_SERVICE_COMMANDS.START_SERVICE)) {
             // Only START_SERVICE is launched with startForegroundService(). STOP
             // and diagnostics must not call startForeground() during teardown.
-            if (!V2rayCoreManager.getInstance().showStartupNotification(AppConfigs.APPLICATION_NAME)) {
+            if (!V2rayCoreManager.getInstance().showStartupNotification(
+                    intent.getStringExtra(AppConfigs.EXTRA_APPLICATION_NAME),
+                    intent.getIntExtra(AppConfigs.EXTRA_APPLICATION_ICON, 0))) {
                 Log.e("V2rayProxyOnlyService", "Failed to promote proxy service to startup foreground");
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
             foregroundActive = true;
+            prepareForStart();
             V2rayConfig v2rayConfig = (V2rayConfig) intent.getSerializableExtra("V2RAY_CONFIG");
             if (v2rayConfig == null) {
                 Log.w("V2rayProxyOnlyService", "V2RAY_CONFIG is null, cannot start service");
@@ -83,7 +86,9 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
                     String packageName = getPackageName();
                     Intent sendB = new Intent(packageName + ".CONNECTED_V2RAY_SERVER_DELAY");
                     sendB.setPackage(packageName);
-                    sendB.putExtra("DELAY", String.valueOf(V2rayCoreManager.getInstance().getConnectedV2rayServerDelay()));
+                    sendB.putExtra("DELAY", String.valueOf(
+                            V2rayCoreManager.getInstance().getConnectedV2rayServerDelay(
+                                    intent.getStringExtra(AppConfigs.EXTRA_DELAY_URL))));
                     sendBroadcast(sendB);
                 } catch (Exception e) {
                     Log.w("V2rayProxyOnlyService", "Failed to send delay broadcast", e);
@@ -118,6 +123,12 @@ public class V2rayProxyOnlyService extends Service implements V2rayServicesListe
         }
         coreReleased = true;
         V2rayCoreManager.getInstance().stopCoreRuntime();
+    }
+
+    private synchronized void prepareForStart() {
+        // A foreground Service instance can be reused after a completed STOP.
+        // The next session must not inherit the previous cleanup guard.
+        coreReleased = false;
     }
 
     private synchronized void stopForegroundOnce() {

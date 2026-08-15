@@ -37,4 +37,44 @@ class XrayStatus {
     this.download = 0,
     this.state = 'DISCONNECTED',
   });
+
+  /// Decodes the stable six-field event emitted by the Android plugin.
+  ///
+  /// A malformed native event is a plugin contract violation and is surfaced
+  /// as a [FormatException] instead of becoming an asynchronous cast error.
+  factory XrayStatus.fromPlatformEvent(Object? event) {
+    if (event is! List || event.length != 6) {
+      throw const FormatException(
+        'Xray status event must contain exactly six fields',
+      );
+    }
+
+    int integerAt(int index, String field) {
+      final value = event[index];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      final parsed = int.tryParse(value?.toString() ?? '');
+      if (parsed == null) {
+        throw FormatException('Xray status $field is not an integer: $value');
+      }
+      return parsed;
+    }
+
+    String stringAt(int index, String field) {
+      final value = event[index];
+      if (value is! String || value.isEmpty) {
+        throw FormatException('Xray status $field is not a non-empty string');
+      }
+      return value;
+    }
+
+    return XrayStatus(
+      duration: stringAt(0, 'duration'),
+      uploadSpeed: integerAt(1, 'uploadSpeed'),
+      downloadSpeed: integerAt(2, 'downloadSpeed'),
+      upload: integerAt(3, 'upload'),
+      download: integerAt(4, 'download'),
+      state: stringAt(5, 'state'),
+    );
+  }
 }

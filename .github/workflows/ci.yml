@@ -1,22 +1,8 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - .github/workflows/ci.yml
-      - analysis_options.yaml
-      - pubspec.yaml
-      - lib/**
-      - test/**
-      - android/**
-      - example/analysis_options.yaml
-      - example/pubspec.yaml
-      - example/lib/**
-      - example/android/**
-      - tool/device/**
-      - tool/verify_android_16k.sh
-  push:
-    branches: [main]
     paths:
       - .github/workflows/ci.yml
       - analysis_options.yaml
@@ -49,12 +35,15 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart format --output=none --set-exit-if-changed lib test example/lib
+      - run: >-
+          dart format --output=none --set-exit-if-changed
+          lib test example/lib example/integration_test tool/device/benchmark_report.dart
       - run: flutter analyze
       - run: flutter test
+      - run: dart pub publish --dry-run
       - run: flutter build apk --release --split-per-abi --target-platform android-arm64
         working-directory: example
-      - run: ./gradlew testDebugUnitTest
+      - run: ./gradlew testDebugUnitTest lintDebug
         working-directory: example/android
       - run: >-
           ./tool/verify_android_16k.sh
