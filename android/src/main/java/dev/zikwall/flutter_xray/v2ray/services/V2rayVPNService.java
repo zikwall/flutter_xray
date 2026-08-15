@@ -3,7 +3,6 @@ package dev.zikwall.flutter_xray.v2ray.services;
 import android.app.Service;
 import android.content.Intent;
 import android.net.VpnService;
-import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
@@ -19,9 +18,6 @@ import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
 import dev.zikwall.flutter_xray.v2ray.interfaces.V2rayServicesListener;
 import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
 import dev.zikwall.flutter_xray.v2ray.utils.V2rayConfig;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 public class V2rayVPNService extends VpnService implements V2rayServicesListener {
     private ParcelFileDescriptor mInterface;
@@ -181,72 +177,6 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
         if (prepare_intent != null) {
             throw new IllegalStateException("Android VPN permission has not been granted");
         }
-        Builder builder = new Builder();
-        builder.setSession(v2rayConfig.REMARK);
-        builder.setMtu(HevTunnelConfig.DEFAULT_MTU);
-        builder.addAddress(HevTunnelConfig.DEFAULT_IPV4, 30);
-
-        if (backendKind == TunnelBackendKind.HEV || backendKind == TunnelBackendKind.XRAY) {
-            builder.addAddress(HevTunnelConfig.DEFAULT_IPV6, 126);
-        }
-
-        if (v2rayConfig.BYPASS_SUBNETS == null || v2rayConfig.BYPASS_SUBNETS.isEmpty()) {
-            builder.addRoute("0.0.0.0", 0);
-            if (backendKind == TunnelBackendKind.HEV || backendKind == TunnelBackendKind.XRAY) {
-                builder.addRoute("::", 0);
-            }
-        } else {
-            for (String subnet : v2rayConfig.BYPASS_SUBNETS) {
-                String[] parts = subnet.split("/");
-                if (parts.length == 2) {
-                    String address = parts[0];
-                    int prefixLength = Integer.parseInt(parts[1]);
-                    builder.addRoute(address, prefixLength);
-                }
-            }
-        }
-        if (v2rayConfig.BLOCKED_APPS != null) {
-            for (int i = 0; i < v2rayConfig.BLOCKED_APPS.size(); i++) {
-                try {
-                    builder.addDisallowedApplication(v2rayConfig.BLOCKED_APPS.get(i));
-                } catch (Exception e) {
-                    // ignore
-                }
-            }
-        }
-        try {
-            JSONObject json = new JSONObject(v2rayConfig.V2RAY_FULL_JSON_CONFIG);
-            if (json.has("dns")) {
-                JSONObject dnsObject = json.getJSONObject("dns");
-                if (dnsObject.has("servers")) {
-                    JSONArray serversArray = dnsObject.getJSONArray("servers");
-                    for (int i = 0; i < serversArray.length(); i++) {
-                        try {
-                            Object entry = serversArray.get(i);
-                            if (entry instanceof String) {
-                                builder.addDnsServer((String) entry);
-                            } else if (entry instanceof JSONObject) {
-                                JSONObject obj = (JSONObject) entry;
-                                if (obj.has("address")) {
-                                    builder.addDnsServer(obj.getString("address"));
-                                }
-                            }
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // If parsing fails, add sane fallback DNS
-            try {
-                builder.addDnsServer("1.1.1.1");
-            } catch (Exception ignored) {
-            }
-            try {
-                builder.addDnsServer("8.8.8.8");
-            } catch (Exception ignored) {
-            }
-        }
         if (mInterface != null) {
             try {
                 mInterface.close();
@@ -254,14 +184,12 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             }
             mInterface = null;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            builder.setMetered(false);
-        }
-
-        mInterface = builder.establish();
-        if (mInterface == null) {
-            throw new IllegalStateException("Android failed to establish the VPN interface");
-        }
+        Builder builder = new Builder();
+        mInterface = new VpnNetworkBuilder().establish(
+                VpnNetworkBuilder.android(builder),
+                v2rayConfig,
+                backendKind,
+                true);
         return mInterface;
     }
 

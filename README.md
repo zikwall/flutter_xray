@@ -105,7 +105,11 @@ Set `proxyOnly: true` in `start` to run the configured local proxy without
 creating an Android VPN interface.
 
 `blockedApps` contains Android package names excluded from the VPN. It does not
-block those applications from accessing the network.
+block those applications from accessing the network. The list may safely come
+from a server: installed packages are applied, duplicates and unavailable
+package IDs are ignored with a bounded warning, and the same behavior applies
+to BadVPN, Xray native TUN and HEV. Unexpected Android package-manager or VPN
+builder failures remain explicit startup errors.
 
 ## Development
 

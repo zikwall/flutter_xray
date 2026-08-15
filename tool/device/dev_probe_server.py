@@ -57,8 +57,12 @@ def dns_response(query: bytes, answer_ipv4: str) -> tuple[str, bytes]:
     return hostname, header + question + answer
 
 
+def socket_family(bind: str) -> socket.AddressFamily:
+    return socket.AF_INET6 if ipaddress.ip_address(bind).version == 6 else socket.AF_INET
+
+
 def udp_echo(bind: str, port: int) -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+    with socket.socket(socket_family(bind), socket.SOCK_DGRAM) as server:
         server.bind((bind, port))
         while True:
             payload, peer = server.recvfrom(65535)
@@ -71,7 +75,7 @@ def dns_probe(
     answer_ipv4: str,
     state: ProbeState,
 ) -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+    with socket.socket(socket_family(bind), socket.SOCK_DGRAM) as server:
         server.bind((bind, port))
         while True:
             query, peer = server.recvfrom(4096)
@@ -138,6 +142,17 @@ def handler(state: ProbeState, max_payload: int):
     return Handler
 
 
+def http_server(
+    bind: str,
+    port: int,
+    request_handler: type[http.server.BaseHTTPRequestHandler],
+) -> http.server.ThreadingHTTPServer:
+    class ProbeHttpServer(http.server.ThreadingHTTPServer):
+        address_family = socket_family(bind)
+
+    return ProbeHttpServer((bind, port), request_handler)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bind", default="0.0.0.0")
@@ -160,10 +175,7 @@ def main() -> None:
         args=(args.dns_bind, args.dns_port, args.dns_answer, state),
         daemon=True,
     ).start()
-    server = http.server.ThreadingHTTPServer(
-        (args.bind, args.http_port),
-        handler(state, args.max_payload),
-    )
+    server = http_server(args.bind, args.http_port, handler(state, args.max_payload))
     server.serve_forever()
 
 

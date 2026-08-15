@@ -4,12 +4,15 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 
 import dev.zikwall.flutter_xray.tunnel.TunnelBackendKind;
 import dev.zikwall.flutter_xray.v2ray.core.V2rayCoreManager;
 import dev.zikwall.flutter_xray.v2ray.services.V2rayProxyOnlyService;
 import dev.zikwall.flutter_xray.v2ray.services.V2rayVPNService;
+import dev.zikwall.flutter_xray.v2ray.services.VpnNetworkBuilder;
 import dev.zikwall.flutter_xray.v2ray.utils.AppConfigs;
 import dev.zikwall.flutter_xray.v2ray.utils.Utilities;
 
@@ -51,19 +54,30 @@ public class V2rayController {
     public static void StartV2ray(final Context context, final String remark, final String config,
             final ArrayList<String> blocked_apps, final ArrayList<String> bypass_subnets,
             final String tunnel_backend) {
-        AppConfigs.V2RAY_CONFIG = Utilities.parseV2rayJsonFile(remark, config, blocked_apps, bypass_subnets);
-        if (AppConfigs.V2RAY_CONFIG == null) {
-            throw new IllegalArgumentException("Xray configuration is invalid or has no inbounds array");
-        }
-        TunnelBackendKind.fromConfigValue(tunnel_backend);
-        AppConfigs.V2RAY_CONFIG.TUNNEL_BACKEND = tunnel_backend;
-        Intent start_intent;
-        if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY) {
-            start_intent = new Intent(context, V2rayProxyOnlyService.class);
-        } else if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN) {
-            start_intent = new Intent(context, V2rayVPNService.class);
-        } else {
-            return;
+        final Intent start_intent;
+        try {
+            AppConfigs.V2RAY_CONFIG = Utilities.parseV2rayJsonFile(
+                    remark, config, blocked_apps, bypass_subnets);
+            if (AppConfigs.V2RAY_CONFIG == null) {
+                throw new IllegalArgumentException(
+                        "Xray configuration is invalid or has no inbounds array");
+            }
+            TunnelBackendKind backendKind = TunnelBackendKind.fromConfigValue(tunnel_backend);
+            AppConfigs.V2RAY_CONFIG.TUNNEL_BACKEND = tunnel_backend;
+            if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY) {
+                start_intent = new Intent(context, V2rayProxyOnlyService.class);
+            } else if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN) {
+                AppConfigs.V2RAY_CONFIG.BLOCKED_APPS = installedBlockedApplications(
+                        context, AppConfigs.V2RAY_CONFIG.BLOCKED_APPS);
+                VpnNetworkBuilder.validate(AppConfigs.V2RAY_CONFIG, backendKind);
+                start_intent = new Intent(context, V2rayVPNService.class);
+            } else {
+                AppConfigs.V2RAY_CONFIG = null;
+                return;
+            }
+        } catch (RuntimeException error) {
+            AppConfigs.V2RAY_CONFIG = null;
+            throw error;
         }
         start_intent.putExtra("COMMAND", AppConfigs.V2RAY_SERVICE_COMMANDS.START_SERVICE);
         start_intent.putExtra("V2RAY_CONFIG", AppConfigs.V2RAY_CONFIG);
@@ -82,6 +96,21 @@ public class V2rayController {
                 throw error;
             }
         }
+    }
+
+    private static ArrayList<String> installedBlockedApplications(
+            Context context, ArrayList<String> blockedApplications) {
+        return BlockedApplicationFilter.installedOnly(
+                blockedApplications,
+                packageName -> {
+                    try {
+                        context.getPackageManager().getApplicationInfo(packageName, 0);
+                        return true;
+                    } catch (PackageManager.NameNotFoundException error) {
+                        return false;
+                    }
+                },
+                message -> Log.w("V2rayController", message));
     }
 
     public static void StopV2ray(final Context context) {
