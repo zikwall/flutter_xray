@@ -9,6 +9,10 @@ released from the legacy `flutter_v2ray_client` project.
 
 - Retry the BadVPN tun2socks control-socket handoff for a bounded period and
   stop the VPN cleanly when the file descriptor cannot be delivered.
+- Rebuild the checked-in Xray AAR from the pinned AndroidLibXrayLite source
+  instead of relying on an unreproducible binary-only protector extension.
+- Register Android `VpnService.protect` through Xray's default system dialer for
+  both TCP and UDP sockets, without the legacy server-specific dialer hook.
 
 ### Documentation
 
@@ -23,6 +27,9 @@ released from the legacy `flutter_v2ray_client` project.
   lifecycle without changing the selected runtime backend.
 - Pin AndroidLibXrayLite and hev-socks5-tunnel as source submodules and add a
   reproducible remote Android native build with checksums and 16 KB checks.
+- Verify and install Xray AAR artifacts only when their source revision,
+  protector overlay, checksums, ABI surface and 16 KB alignment match the
+  locked native manifest.
 
 ## 3.4.0
 

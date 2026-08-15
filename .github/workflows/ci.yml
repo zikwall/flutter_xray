@@ -13,6 +13,7 @@ on:
       - example/pubspec.yaml
       - example/lib/**
       - example/android/**
+      - tool/device/**
       - tool/verify_android_16k.sh
   push:
     branches: [main]
@@ -27,6 +28,7 @@ on:
       - example/pubspec.yaml
       - example/lib/**
       - example/android/**
+      - tool/device/**
       - tool/verify_android_16k.sh
 
 concurrency:

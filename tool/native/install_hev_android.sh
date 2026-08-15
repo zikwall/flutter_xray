@@ -24,6 +24,7 @@ grep -Fqx "android_page_size=$ANDROID_PAGE_SIZE" "$manifest" ||
 for abi in $ANDROID_ABIS; do
   source_library=$artifact_root/hev/$abi/libhev-socks5-tunnel.so
   [[ -f "$source_library" ]] || fail "Missing HEV runtime artifact: $source_library"
+  verify_manifest_artifact "$manifest" "$artifact_root" "$source_library"
   mkdir -p "$runtime_root/$abi"
   install -m 0644 "$source_library" "$runtime_root/$abi/libhev-socks5-tunnel.so"
 done

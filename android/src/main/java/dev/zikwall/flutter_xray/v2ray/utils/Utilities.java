@@ -92,21 +92,6 @@ public class Utilities {
                 Log.w(V2rayCoreManager.class.getSimpleName(), "startCore warn => can`t find inbound port of socks5 or http.");
                 return null;
             }
-            JSONObject outboundSettings = config_json.getJSONArray("outbounds")
-                    .getJSONObject(0).optJSONObject("settings");
-            if (outboundSettings != null) {
-                JSONArray endpoints = outboundSettings.optJSONArray("vnext");
-                if (endpoints == null) {
-                    endpoints = outboundSettings.optJSONArray("servers");
-                }
-                if (endpoints != null && endpoints.length() > 0) {
-                    JSONObject endpoint = endpoints.optJSONObject(0);
-                    if (endpoint != null) {
-                        v2rayConfig.CONNECTED_V2RAY_SERVER_ADDRESS = endpoint.optString("address", "");
-                        v2rayConfig.CONNECTED_V2RAY_SERVER_PORT = endpoint.optString("port", "");
-                    }
-                }
-            }
             try {
                 if (config_json.has("policy")) {
                     config_json.remove("policy");

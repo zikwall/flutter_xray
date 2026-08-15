@@ -12,4 +12,5 @@ check_locked_inputs
 echo "AndroidLibXrayLite $XRAY_LITE_VERSION ($XRAY_LITE_REVISION)"
 echo "hev-socks5-tunnel $HEV_VERSION ($HEV_REVISION)"
 echo "Go $GO_VERSION / gomobile $GOMOBILE_VERSION"
+echo "Java $JAVA_VERSION"
 echo "Android NDK $ANDROID_NDK_VERSION / API $ANDROID_API / compile SDK $ANDROID_COMPILE_SDK"
