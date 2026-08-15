@@ -10,6 +10,7 @@ source "$native_tool_directory/versions.env"
 
 native_output_root=${NATIVE_OUTPUT_ROOT:-$repository_root/native-build/android}
 xray_source_directory=$repository_root/native/AndroidLibXrayLite
+xray_overlay_directory=$repository_root/native/overlays/AndroidLibXrayLite
 hev_source_directory=$repository_root/native/hev-socks5-tunnel
 
 fail() {
@@ -53,9 +54,40 @@ resolve_android_ndk() {
 check_locked_inputs() {
   require_command git
   require_revision "$xray_source_directory" "$XRAY_LITE_REVISION" AndroidLibXrayLite
+  [[ -f "$xray_overlay_directory/protector_android.go" ]] ||
+    fail "AndroidLibXrayLite protector overlay is missing"
   require_revision "$hev_source_directory" "$HEV_REVISION" hev-socks5-tunnel
   git -C "$hev_source_directory" submodule status --recursive |
     grep -Eq '^[+-]' &&
     fail "Nested HEV submodules are missing or differ from the pinned revision"
   return 0
+}
+
+verify_xray_overlay_manifest() {
+  local manifest=$1
+  local overlay
+  local relative_path
+  local digest
+
+  require_command shasum
+  while IFS= read -r overlay; do
+    relative_path=${overlay#"$repository_root/"}
+    digest=$(shasum -a 256 "$overlay" | awk '{print $1}')
+    grep -Fqx "overlay_sha256=$digest  $relative_path" "$manifest" ||
+      fail "Native manifest does not match overlay file: $relative_path"
+  done < <(find "$xray_overlay_directory" -type f -name '*.go' | sort)
+}
+
+verify_manifest_artifact() {
+  local manifest=$1
+  local artifact_root=$2
+  local artifact=$3
+  local relative_path=${artifact#"$artifact_root/"}
+  local digest
+
+  [[ -f "$artifact" ]] || fail "Native artifact is missing: $artifact"
+  require_command shasum
+  digest=$(shasum -a 256 "$artifact" | awk '{print $1}')
+  grep -Fqx "$digest  $relative_path" "$manifest" ||
+    fail "Native artifact checksum does not match MANIFEST.txt: $relative_path"
 }

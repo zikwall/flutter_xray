@@ -29,13 +29,14 @@ jobs:
         run: |
           source tool/native/versions.env
           echo "GO_VERSION=$GO_VERSION" >>"$GITHUB_ENV"
+          echo "JAVA_VERSION=$JAVA_VERSION" >>"$GITHUB_ENV"
           echo "ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION" >>"$GITHUB_ENV"
           echo "ANDROID_COMPILE_SDK=$ANDROID_COMPILE_SDK" >>"$GITHUB_ENV"
           echo "ANDROID_BUILD_TOOLS=$ANDROID_BUILD_TOOLS" >>"$GITHUB_ENV"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: ${{ env.JAVA_VERSION }}
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -53,6 +54,22 @@ jobs:
         run: ./tool/native/check_inputs.sh
       - name: Build and verify native artifacts
         run: ./tool/native/build_android.sh all
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Compile plugin with generated Xray AAR
+        run: |
+          ./tool/native/install_xray_android.sh
+          ./tool/native/install_hev_android.sh
+          flutter pub get
+          (cd example && flutter pub get)
+          (cd example/android && ./gradlew testDebugUnitTest)
+      - name: Package and verify generated Xray AAR
+        run: |
+          (cd example && flutter build apk --release --split-per-abi --target-platform android-arm64)
+          ./tool/verify_android_16k.sh \
+            example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
       - uses: actions/upload-artifact@v7
         with:
           name: flutter-xray-native-android

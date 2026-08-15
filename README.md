@@ -107,8 +107,9 @@ See [BUILDING.md](docs/BUILDING.md) for reproducible local checks and
 
 Clone with `--recurse-submodules` when working on native code. The pinned
 AndroidLibXrayLite and hev-socks5-tunnel sources are reproducible build inputs.
-Runtime HEV libraries are generated only from the locked source and toolchain;
-see the native install command in [BUILDING.md](docs/BUILDING.md).
+The Android Xray AAR is built with the tracked `VpnService.protect` overlay;
+Xray and HEV runtime artifacts are accepted only with a matching build
+manifest. See [BUILDING.md](docs/BUILDING.md).
 
 ## License and third-party software
 

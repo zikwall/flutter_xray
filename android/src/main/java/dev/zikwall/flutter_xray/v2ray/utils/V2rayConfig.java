@@ -5,8 +5,6 @@ import java.util.ArrayList;
 
 public class V2rayConfig implements Serializable {
 
-    public String CONNECTED_V2RAY_SERVER_ADDRESS = "";
-    public String CONNECTED_V2RAY_SERVER_PORT = "";
     public int LOCAL_SOCKS5_PORT = 10808;
     public int LOCAL_HTTP_PORT = 10809;
     public ArrayList<String> BLOCKED_APPS = null;

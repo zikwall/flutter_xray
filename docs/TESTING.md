@@ -1,7 +1,10 @@
 # Test matrix
 
-Recorded device runs live under [`device-tests/`](device-tests/); the current
-HEV baseline is [`2026-08-14-hev-android15.md`](device-tests/2026-08-14-hev-android15.md).
+Recorded device runs live under [`device-tests/`](device-tests/). The current
+native provenance baseline is
+[`2026-08-15-xray-aar-reproducibility.md`](device-tests/2026-08-15-xray-aar-reproducibility.md);
+the original HEV integration baseline remains
+[`2026-08-14-hev-android15.md`](device-tests/2026-08-14-hev-android15.md).
 
 Pull requests run formatting, analysis and unit tests. Changes to the Android
 VPN data path require the relevant physical-device scenarios below before a
@@ -36,7 +39,18 @@ power behavior depend on the operating system and hardware.
 ## Physical-device harness
 
 The backend is selected explicitly for each run. A credential-free direct Xray
-profile can exercise rapid lifecycle on a physical device:
+profile can exercise rapid lifecycle on a physical device. The runner detects a
+single connected adb device automatically and does not require an interface:
+
+```shell
+tool/device/run_android_matrix.sh --quick --backends=hev,badvpn
+```
+
+`--quick` performs one TCP packet-path and lifecycle pass per backend without
+resource sampling or a private profile. Keep a securely locked device unlocked
+when the run starts; the runner wakes the display, temporarily extends its
+timeout and restores the original power settings when it exits. For a longer
+direct run, use the Flutter test directly:
 
 ```shell
 cd example
@@ -62,14 +76,21 @@ dart run tool/device/prepare_profile_defines.dart \
   --expected-host=<dev-host>
 
 ADB_BIN=<adb-path> tool/device/run_android_matrix.sh \
-  --device=<device-id> \
   --defines=tool/device/local/dev.device.local.json \
-  --backends=hev,badvpn
+  --backends=hev,badvpn \
+  --cycles=10 \
+  --profile-runs=3
 ```
 
 The runner rejects a profile file unless Git ignores it. Evidence is written
 under ignored `tool/device/results/`; bearer links must never be copied into a
 tracked test or document.
+
+Useful runner overrides include `--profile=<id>`, `--hold-seconds=<seconds>`,
+`--require-udp=true|false`, `--background-cycle`, `--no-sampling` and repeated
+`--define=NAME=value`. Explicit command-line defines override values from the
+private define file. If more than one device is connected, pass
+`--device=<adb-id>`.
 
 For a deterministic LAN UDP check, start the echo helper on the development
 machine and pass its LAN address to the device test:

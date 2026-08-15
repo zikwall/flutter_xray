@@ -87,8 +87,17 @@ individually.
 
 `native/AndroidLibXrayLite` and `native/hev-socks5-tunnel` are pinned git
 submodules. `tool/native/versions.env` locks their expected revisions together
-with Go, gomobile, NDK, Android API, compile SDK, build-tools and ABI inputs. The
-build refuses mismatched or incomplete submodules.
+with Go, gomobile, Java, NDK, Android API, compile SDK, build-tools and ABI
+inputs. The build refuses mismatched or incomplete submodules.
+
+AndroidLibXrayLite upstream does not expose the Android `VpnService.protect`
+callback required by this plugin. The small, tracked overlay under
+`native/overlays/AndroidLibXrayLite/` registers that callback through Xray's
+default system-dialer controller. The build exports the pinned submodule into a
+temporary directory and applies the overlay there; it never mutates the
+submodule. The overlay identity and file hashes are recorded in `MANIFEST.txt`.
+The former binary-only `setProtectorServer` extension is deliberately not
+reintroduced.
 
 Set `ANDROID_SDK_ROOT` (or `ANDROID_HOME`) and run:
 
@@ -109,11 +118,23 @@ Android plugin runtime:
 ./tool/native/install_hev_android.sh
 ```
 
-The install command rejects a manifest produced from a different HEV revision,
-NDK or page-size setting. Pass an artifact directory as its only argument when
-installing an artifact downloaded from the remote native-build workflow.
+Install a generated Xray AAR with the equivalent guarded command:
+
+```shell
+./tool/native/install_xray_android.sh
+```
+
+Both installers reject a mismatched revision, overlay, NDK or page-size
+manifest. `verify_xray_aar.sh` additionally checks the generated gomobile API,
+all configured ABIs and the presence of `V2RayProtector` before the AAR can be
+installed.
+
+Pass an artifact directory as the only argument when installing an artifact
+downloaded from the remote native-build workflow.
 
 The `Native Android build` GitHub Actions workflow performs the same build on a
-clean remote runner and uploads the generated directory. Release updates remain
-manual: downloading and installing a workflow artifact is a deliberate source
-change, not an action performed for every commit.
+clean remote runner, installs the generated Xray AAR into its checkout, compiles
+the plugin, runs Android unit tests, packages an ARM64 release APK and verifies
+its 16 KB alignment before uploading the generated directory. Release updates
+remain manual: downloading and installing a workflow artifact is a deliberate
+source change, not an action performed for every commit.
