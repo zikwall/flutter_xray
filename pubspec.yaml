@@ -32,5 +32,3 @@ flutter:
       android:
         package: dev.zikwall.flutter_xray
         pluginClass: FlutterXrayPlugin
-      ios:
-        pluginClass: FlutterXrayPlugin

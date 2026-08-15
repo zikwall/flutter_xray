@@ -12,6 +12,12 @@ class FakeFlutterXrayPlatform extends FlutterXrayPlatform {
   bool? startedProxyOnly;
   String? startedTunnelBackend;
   int serverDelay = 42;
+  int disposeCalls = 0;
+
+  @override
+  Future<void> dispose() async {
+    disposeCalls += 1;
+  }
 
   @override
   Future<void> start({
@@ -145,6 +151,16 @@ void main() {
       expect(platform.startedConfig, isNull);
     });
 
+    test('rejects a valid JSON value that is not a configuration object',
+        () async {
+      await expectLater(
+        xray.start(remark: 'Test', config: '[]'),
+        throwsArgumentError,
+      );
+
+      expect(platform.startedConfig, isNull);
+    });
+
     test('returns delay from the platform for valid JSON', () async {
       const config = '{"inbounds": [], "outbounds": []}';
 
@@ -155,6 +171,50 @@ void main() {
       await expectLater(
         xray.getServerDelay(config: 'invalid json'),
         throwsArgumentError,
+      );
+    });
+
+    test('dispose releases the platform status subscription', () async {
+      await xray.dispose();
+
+      expect(platform.disposeCalls, 1);
+    });
+  });
+
+  group('status event contract', () {
+    test('accepts numeric and string traffic fields', () {
+      final status = XrayStatus.fromPlatformEvent([
+        '00:00:05',
+        '1',
+        2,
+        3.0,
+        '4',
+        'CONNECTED',
+      ]);
+
+      expect(status.duration, '00:00:05');
+      expect(status.uploadSpeed, 1);
+      expect(status.downloadSpeed, 2);
+      expect(status.upload, 3);
+      expect(status.download, 4);
+      expect(status.state, 'CONNECTED');
+    });
+
+    test('rejects malformed platform events explicitly', () {
+      expect(
+        () => XrayStatus.fromPlatformEvent(['too', 'short']),
+        throwsFormatException,
+      );
+      expect(
+        () => XrayStatus.fromPlatformEvent([
+          '00:00:00',
+          'not-a-number',
+          '0',
+          '0',
+          '0',
+          'DISCONNECTED',
+        ]),
+        throwsFormatException,
       );
     });
   });

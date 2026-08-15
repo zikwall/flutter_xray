@@ -58,12 +58,19 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             // before config parsing, core initialization or TUN establishment.
             // STOP and MEASURE_DELAY arrive through startService() and must never
             // re-promote a service that is already tearing down.
-            if (!V2rayCoreManager.getInstance().showStartupNotification(AppConfigs.APPLICATION_NAME)) {
+            if (!V2rayCoreManager.getInstance().showStartupNotification(
+                    intent.getStringExtra(AppConfigs.EXTRA_APPLICATION_NAME),
+                    intent.getIntExtra(AppConfigs.EXTRA_APPLICATION_ICON, 0))) {
                 Log.e("V2rayVPNService", "Failed to promote VPN service to startup foreground");
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
             foregroundActive = true;
+            if (!prepareForStart()) {
+                Log.e("V2rayVPNService", "Previous VPN cleanup is still in progress");
+                stopAllProcess();
+                return START_NOT_STICKY;
+            }
             v2rayConfig = (V2rayConfig) intent.getSerializableExtra("V2RAY_CONFIG");
             if (v2rayConfig == null) {
                 Log.w("V2rayVPNService", "V2RAY_CONFIG is null, cannot start service");
@@ -112,7 +119,9 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
                     String packageName = getPackageName();
                     Intent sendB = new Intent(packageName + ".CONNECTED_V2RAY_SERVER_DELAY");
                     sendB.setPackage(packageName);
-                    sendB.putExtra("DELAY", String.valueOf(V2rayCoreManager.getInstance().getConnectedV2rayServerDelay()));
+                    sendB.putExtra("DELAY", String.valueOf(
+                            V2rayCoreManager.getInstance().getConnectedV2rayServerDelay(
+                                    intent.getStringExtra(AppConfigs.EXTRA_DELAY_URL))));
                     sendBroadcast(sendB);
                 } catch (Exception e) {
                     Log.w("V2rayVPNService", "Failed to send delay broadcast", e);
@@ -170,6 +179,18 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             resourcesReleased = true;
             cleaningUp = false;
         }
+    }
+
+    private synchronized boolean prepareForStart() {
+        if (cleaningUp
+                || tunnelLifecycle.state() != TunnelLifecycle.State.STOPPED
+                || mInterface != null) {
+            return false;
+        }
+        // Android may deliver a new START to the same Service instance after
+        // a completed stop. The new lifecycle must own its own cleanup pass.
+        resourcesReleased = false;
+        return true;
     }
 
     private ParcelFileDescriptor establishVpnInterface(TunnelBackendKind backendKind) throws Exception {

@@ -1,5 +1,9 @@
 # Building and verification
 
+The Android plugin minimum is API 24. This matches the manifest embedded in
+the checked-in AndroidLibXrayLite AAR and the locked native build API; do not
+advertise a lower application minimum.
+
 ## Requirements
 
 - a Flutter stable SDK compatible with `pubspec.yaml`;
@@ -24,16 +28,18 @@ Run from the repository root:
 
 ```shell
 flutter pub get
-dart format --output=none --set-exit-if-changed lib test example/lib
+dart format --output=none --set-exit-if-changed \
+  lib test example/lib example/integration_test tool/device/benchmark_report.dart
 flutter analyze
 flutter test
+dart pub publish --dry-run
 ```
 
 Run Android unit tests from the example project:
 
 ```shell
 cd example/android
-./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest lintDebug
 ```
 
 ## ARM64 release APK

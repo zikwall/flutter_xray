@@ -63,6 +63,13 @@ const _dnsProbePort = int.fromEnvironment(
 const _dnsSourceUrl = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_DNS_SOURCE_URL',
 );
+const _dnsWhoamiAddress = String.fromEnvironment(
+  'FLUTTER_XRAY_DEVICE_DNS_WHOAMI_ADDRESS',
+);
+const _dnsWhoamiHostname = String.fromEnvironment(
+  'FLUTTER_XRAY_DEVICE_DNS_WHOAMI_HOSTNAME',
+  defaultValue: 'whoami.cloudflare.com',
+);
 const _expectedDnsSource = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_EXPECTED_DNS_SOURCE',
 );
@@ -109,114 +116,116 @@ const _directConfig = r'''
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'physical-device transport, packet path and lifecycle',
-    (tester) async {
-      String state = 'UNKNOWN';
-      final stateChanges = StreamController<String>.broadcast();
-      final xray = Xray(
-        onStatusChanged: (status) {
-          state = status.state;
-          stateChanges.add(state);
-        },
-      );
-      addTearDown(() async {
+  testWidgets('physical-device transport, packet path and lifecycle', (
+    tester,
+  ) async {
+    String state = 'UNKNOWN';
+    final stateChanges = StreamController<String>.broadcast();
+    final xray = Xray(
+      onStatusChanged: (status) {
+        state = status.state;
+        stateChanges.add(state);
+      },
+    );
+    addTearDown(() async {
+      try {
         await xray.stop();
-      });
-
-      await xray.initialize();
-      debugPrint('DEVICE_EVIDENCE CORE version=${await xray.getCoreVersion()}');
-      expect(await xray.requestPermission(), isTrue);
-      final profiles = _loadProfiles();
-      debugPrint(
-        'DEVICE_EVIDENCE CONFIG backend=$_backendName '
-        'profiles=${profiles.length} cycles=$_lifecycleCycles '
-        'profile_runs=$_profileRuns require_udp=$_requireUdp '
-        'hold_seconds=$_holdSeconds',
-      );
-
-      for (var cycle = 0; cycle < _lifecycleCycles; cycle += 1) {
-        await _startAndWait(
-          xray: xray,
-          remark: '$_backendName lifecycle $cycle',
-          config: profiles.first.config,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-        await _stopAndWait(
-          xray: xray,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-        debugPrint('DEVICE_EVIDENCE RECONNECT cycle=${cycle + 1} passed=true');
+      } finally {
+        await xray.dispose();
+        await stateChanges.close();
       }
+    });
 
-      final profileFailures = <String>[];
-      for (var run = 1; run <= _profileRuns; run += 1) {
-        for (final profile in profiles) {
-          debugPrint(
-            'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run started=true',
+    await xray.initialize();
+    debugPrint('DEVICE_EVIDENCE CORE version=${await xray.getCoreVersion()}');
+    expect(await xray.requestPermission(), isTrue);
+    final profiles = _loadProfiles();
+    debugPrint(
+      'DEVICE_EVIDENCE CONFIG backend=$_backendName '
+      'profiles=${profiles.length} cycles=$_lifecycleCycles '
+      'profile_runs=$_profileRuns require_udp=$_requireUdp '
+      'hold_seconds=$_holdSeconds',
+    );
+
+    for (var cycle = 0; cycle < _lifecycleCycles; cycle += 1) {
+      await _startAndWait(
+        xray: xray,
+        remark: '$_backendName lifecycle $cycle',
+        config: profiles.first.config,
+        state: () => state,
+        changes: stateChanges.stream,
+      );
+      await _stopAndWait(
+        xray: xray,
+        state: () => state,
+        changes: stateChanges.stream,
+      );
+      debugPrint('DEVICE_EVIDENCE RECONNECT cycle=${cycle + 1} passed=true');
+    }
+
+    final profileFailures = <String>[];
+    for (var run = 1; run <= _profileRuns; run += 1) {
+      for (final profile in profiles) {
+        debugPrint(
+          'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run started=true',
+        );
+        try {
+          await _startAndWait(
+            xray: xray,
+            remark: '$_backendName ${profile.id} run $run',
+            config: profile.config,
+            state: () => state,
+            changes: stateChanges.stream,
           );
-          try {
-            await _startAndWait(
+          if (_externalProbeOnly) {
+            debugPrint(
+              'DEVICE_EVIDENCE EXTERNAL_PROBE_READY profile=${profile.id} '
+              'hold_seconds=$_holdSeconds',
+            );
+            await Future<void>.delayed(Duration(seconds: _holdSeconds));
+            debugPrint(
+              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
+              'external_probe_window_complete=true',
+            );
+          } else {
+            await _runPacketProbes(profile.id, run: run);
+            debugPrint(
+              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run passed=true',
+            );
+          }
+        } catch (error) {
+          profileFailures.add('${profile.id}: ${error.runtimeType}');
+          debugPrint(
+            'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
+            'passed=false error_type=${error.runtimeType} error=$error',
+          );
+        } finally {
+          if (state != 'DISCONNECTED') {
+            await _stopAndWait(
               xray: xray,
-              remark: '$_backendName ${profile.id} run $run',
-              config: profile.config,
               state: () => state,
               changes: stateChanges.stream,
             );
-            if (_externalProbeOnly) {
-              debugPrint(
-                'DEVICE_EVIDENCE EXTERNAL_PROBE_READY profile=${profile.id} '
-                'hold_seconds=$_holdSeconds',
-              );
-              await Future<void>.delayed(Duration(seconds: _holdSeconds));
-              debugPrint(
-                'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
-                'external_probe_window_complete=true',
-              );
-            } else {
-              await _runPacketProbes(profile.id, run: run);
-              debugPrint(
-                'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run passed=true',
-              );
-            }
-          } catch (error) {
-            profileFailures.add('${profile.id}: ${error.runtimeType}');
-            debugPrint(
-              'DEVICE_EVIDENCE PROFILE id=${profile.id} run=$run '
-              'passed=false error_type=${error.runtimeType} error=$error',
-            );
-          } finally {
-            if (state != 'DISCONNECTED') {
-              await _stopAndWait(
-                xray: xray,
-                state: () => state,
-                changes: stateChanges.stream,
-              );
-            }
           }
         }
       }
+    }
 
-      expect(
-        profileFailures,
-        isEmpty,
-        reason:
-            'Physical-device profile failures: ${profileFailures.join(', ')}',
+    expect(
+      profileFailures,
+      isEmpty,
+      reason: 'Physical-device profile failures: ${profileFailures.join(', ')}',
+    );
+
+    if (_checkBlockedApps) {
+      await _runBlockedAppsProbe(
+        xray: xray,
+        config: profiles.first.config,
+        state: () => state,
+        changes: stateChanges.stream,
       );
-
-      if (_checkBlockedApps) {
-        await _runBlockedAppsProbe(
-          xray: xray,
-          config: profiles.first.config,
-          state: () => state,
-          changes: stateChanges.stream,
-        );
-      }
-    },
-    timeout: const Timeout(Duration(minutes: 10)),
-  );
+    }
+  }, timeout: const Timeout(Duration(minutes: 10)));
 }
 
 List<_DeviceProfile> _loadProfiles() {
@@ -398,6 +407,29 @@ Future<void> _runPacketProbes(String profileId, {required int run}) async {
         'matches_tunnel=${source == expectedSource}',
       );
     }
+  }
+
+  if (_dnsWhoamiAddress.isNotEmpty) {
+    final answers = await _udpDnsTxtQuery(
+      InternetAddress(_dnsWhoamiAddress),
+      53,
+      _dnsWhoamiHostname,
+    );
+    final sourceAnswer = answers.where(
+      (answer) => answer.toLowerCase().startsWith('remote_ip:'),
+    );
+    expect(sourceAnswer, isNotEmpty);
+    final source = sourceAnswer.first.split(':').skip(1).join(':').trim();
+    expect(InternetAddress.tryParse(source), isNotNull);
+    final expectedSource =
+        _expectedDnsSource.isEmpty ? _expectedTunnelEgress : _expectedDnsSource;
+    if (expectedSource.isNotEmpty) {
+      expect(source, expectedSource);
+    }
+    debugPrint(
+      'DEVICE_EVIDENCE DNS_SOURCE profile=$profileId '
+      'matches_tunnel=${source == expectedSource}',
+    );
   }
 
   if (_holdSeconds > 0) {
@@ -621,6 +653,135 @@ Future<Duration> _udpDnsQuery(
   } finally {
     socket.close();
   }
+}
+
+Future<List<String>> _udpDnsTxtQuery(
+  InternetAddress server,
+  int port,
+  String hostname,
+) async {
+  final socket = await RawDatagramSocket.bind(
+    server.type == InternetAddressType.IPv6
+        ? InternetAddress.anyIPv6
+        : InternetAddress.anyIPv4,
+    0,
+  );
+  final random = Random.secure();
+  final transactionId = random.nextInt(0x10000);
+  final query = BytesBuilder(copy: false)..add([
+    transactionId >> 8,
+    transactionId & 0xff,
+    0x01,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  ]);
+  for (final label in hostname.split('.')) {
+    final encoded = ascii.encode(label);
+    query
+      ..addByte(encoded.length)
+      ..add(encoded);
+  }
+  query.add([0x00, 0x00, 0x10, 0x00, 0x01]);
+
+  try {
+    final response = socket
+        .where((event) => event == RawSocketEvent.read)
+        .map((_) => socket.receive())
+        .where((datagram) => datagram != null)
+        .cast<Datagram>()
+        .first
+        .timeout(const Duration(seconds: 10));
+    final bytes = query.takeBytes();
+    expect(socket.send(bytes, server, port), bytes.length);
+    final packet = (await response).data;
+    expect(packet.length, greaterThan(12));
+    expect(packet[0], transactionId >> 8);
+    expect(packet[1], transactionId & 0xff);
+    expect(packet[2] & 0x80, 0x80);
+    return _dnsTxtAnswers(packet);
+  } finally {
+    socket.close();
+  }
+}
+
+List<String> _dnsTxtAnswers(Uint8List packet) {
+  if (packet.length < 12) {
+    throw const FormatException('Truncated DNS response');
+  }
+  final questionCount = _dnsUint16(packet, 4);
+  final answerCount = _dnsUint16(packet, 6);
+  var offset = 12;
+  for (var index = 0; index < questionCount; index += 1) {
+    offset = _skipDnsName(packet, offset);
+    if (offset + 4 > packet.length) {
+      throw const FormatException('Truncated DNS question');
+    }
+    offset += 4;
+  }
+
+  final answers = <String>[];
+  for (var index = 0; index < answerCount; index += 1) {
+    offset = _skipDnsName(packet, offset);
+    if (offset + 10 > packet.length) {
+      throw const FormatException('Truncated DNS answer');
+    }
+    final type = _dnsUint16(packet, offset);
+    final dnsClass = _dnsUint16(packet, offset + 2);
+    final dataLength = _dnsUint16(packet, offset + 8);
+    offset += 10;
+    final dataEnd = offset + dataLength;
+    if (dataEnd > packet.length) {
+      throw const FormatException('Truncated DNS answer data');
+    }
+    if (type == 16 && dnsClass == 1) {
+      final text = BytesBuilder(copy: false);
+      while (offset < dataEnd) {
+        final length = packet[offset];
+        offset += 1;
+        if (offset + length > dataEnd) {
+          throw const FormatException('Truncated DNS TXT segment');
+        }
+        text.add(packet.sublist(offset, offset + length));
+        offset += length;
+      }
+      answers.add(utf8.decode(text.takeBytes()));
+    } else {
+      offset = dataEnd;
+    }
+  }
+  return answers;
+}
+
+int _skipDnsName(Uint8List packet, int offset) {
+  while (offset < packet.length) {
+    final length = packet[offset];
+    if (length == 0) return offset + 1;
+    if (length & 0xc0 == 0xc0) {
+      if (offset + 2 > packet.length) {
+        throw const FormatException('Truncated DNS name pointer');
+      }
+      return offset + 2;
+    }
+    if (length & 0xc0 != 0 || offset + 1 + length > packet.length) {
+      throw const FormatException('Invalid DNS name');
+    }
+    offset += 1 + length;
+  }
+  throw const FormatException('Truncated DNS name');
+}
+
+int _dnsUint16(Uint8List packet, int offset) {
+  if (offset + 2 > packet.length) {
+    throw const FormatException('Truncated DNS integer');
+  }
+  return packet[offset] << 8 | packet[offset + 1];
 }
 
 Future<Duration> _udpEcho(InternetAddress server, int port) async {

@@ -15,7 +15,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
   List<String> _filteredLogs = [];
   bool _isLoading = false;
   final TextEditingController _searchController = TextEditingController();
-  final Xray _xray = Xray(onStatusChanged: (_) {});
+  final Xray _xray = Xray();
   final ScrollController _scrollController = ScrollController();
 
   @override

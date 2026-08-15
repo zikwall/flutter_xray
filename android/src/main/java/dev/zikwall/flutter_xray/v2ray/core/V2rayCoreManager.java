@@ -39,7 +39,7 @@ public final class V2rayCoreManager {
     private volatile static V2rayCoreManager INSTANCE;
     public V2rayServicesListener v2rayServicesListener = null;
     private CoreController coreController;
-    public AppConfigs.V2RAY_STATES V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_DISCONNECTED;
+    private volatile AppConfigs.V2RAY_STATES v2rayState = AppConfigs.V2RAY_STATES.V2RAY_DISCONNECTED;
     private boolean isLibV2rayCoreInitialized = false;
     private CountDownTimer countDownTimer;
     private int seconds, minutes, hours;
@@ -87,7 +87,7 @@ public final class V2rayCoreManager {
                 String packageName = context.getPackageName();
                 Intent connection_info_intent = new Intent(packageName + ".V2RAY_CONNECTION_INFO");
                 connection_info_intent.setPackage(packageName);
-                connection_info_intent.putExtra("STATE", V2rayCoreManager.getInstance().V2RAY_STATE);
+                connection_info_intent.putExtra("STATE", V2rayCoreManager.getInstance().v2rayState);
                 connection_info_intent.putExtra("DURATION", SERVICE_DURATION);
                 connection_info_intent.putExtra("UPLOAD_SPEED", uploadSpeed);
                 connection_info_intent.putExtra("DOWNLOAD_SPEED", downloadSpeed);
@@ -146,7 +146,9 @@ public final class V2rayCoreManager {
                     if (v2rayServicesListener != null) {
                         return v2rayServicesListener.onProtect((int) fd);
                     }
-                    return true;
+                    Log.e(V2rayCoreManager.class.getSimpleName(),
+                            "Refusing an unprotected Xray socket without an attached service");
+                    return false;
                 }
             });
             // Initialize controller with callback handler
@@ -208,7 +210,7 @@ public final class V2rayCoreManager {
             final V2rayConfig v2rayConfig,
             final String coreConfig,
             final int tunFd) {
-        V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_CONNECTING;
+        v2rayState = AppConfigs.V2RAY_STATES.V2RAY_CONNECTING;
         if (!isLibV2rayCoreInitialized) {
             Log.e(V2rayCoreManager.class.getSimpleName(),
                     "startCore failed => LibV2rayCore should be initialize before start.");
@@ -225,7 +227,7 @@ public final class V2rayCoreManager {
                 return false;
             }
             coreController.startLoop(coreConfig, tunFd);
-            V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_CONNECTED;
+            v2rayState = AppConfigs.V2RAY_STATES.V2RAY_CONNECTED;
             if (isV2rayCoreRunning()) {
                 makeDurationTimer(v2rayServicesListener.getService().getApplicationContext(),
                         v2rayConfig.ENABLE_TRAFFIC_STATICS);
@@ -266,7 +268,7 @@ public final class V2rayCoreManager {
 
     /** Publishes DISCONNECTED after the owning Android service has released every resource. */
     public synchronized void publishDisconnected() {
-        V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_DISCONNECTED;
+        v2rayState = AppConfigs.V2RAY_STATES.V2RAY_DISCONNECTED;
         SERVICE_DURATION = "00:00:00";
         seconds = 0;
         minutes = 0;
@@ -278,7 +280,7 @@ public final class V2rayCoreManager {
             String packageName = context.getPackageName();
             Intent connection_info_intent = new Intent(packageName + ".V2RAY_CONNECTION_INFO");
             connection_info_intent.setPackage(packageName);
-            connection_info_intent.putExtra("STATE", V2rayCoreManager.getInstance().V2RAY_STATE);
+            connection_info_intent.putExtra("STATE", V2rayCoreManager.getInstance().v2rayState);
             connection_info_intent.putExtra("DURATION", SERVICE_DURATION);
             connection_info_intent.putExtra("UPLOAD_SPEED", uploadSpeed);
             connection_info_intent.putExtra("DOWNLOAD_SPEED", downloadSpeed);
@@ -332,7 +334,7 @@ public final class V2rayCoreManager {
         return "";
     }
 
-    public boolean showStartupNotification(final String fallbackRemark) {
+    public boolean showStartupNotification(final String applicationName, final int applicationIcon) {
         Service context = v2rayServicesListener == null
                 ? null
                 : v2rayServicesListener.getService();
@@ -342,23 +344,24 @@ public final class V2rayCoreManager {
         }
 
         try {
-            String appName = AppConfigs.APPLICATION_NAME;
+            String appName = applicationName;
             if (appName == null || appName.isEmpty()) {
                 appName = "VPN";
             }
 
-            String title = fallbackRemark;
-            if (title == null || title.isEmpty()) {
-                title = appName;
+            int icon = applicationIcon;
+            if (icon == 0 && context.getApplicationInfo() != null) {
+                icon = context.getApplicationInfo().icon;
             }
-
-            int icon = resolveNotificationIcon(context, null);
+            if (icon == 0) {
+                icon = android.R.drawable.stat_sys_warning;
+            }
 
             String notificationChannelID = createNotificationChannelID(appName);
             NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(context,
                     notificationChannelID)
                     .setSmallIcon(icon)
-                    .setContentTitle(title)
+                    .setContentTitle(appName)
                     .setContentText("")
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setShowWhen(false)
@@ -418,11 +421,12 @@ public final class V2rayCoreManager {
             String notificationChannelID = createNotificationChannelID(v2rayConfig.APPLICATION_NAME);
 
             Intent stopIntent;
-            if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.PROXY_ONLY) {
+            if (context instanceof V2rayProxyOnlyService) {
                 stopIntent = new Intent(context, V2rayProxyOnlyService.class);
-            } else if (AppConfigs.V2RAY_CONNECTION_MODE == AppConfigs.V2RAY_CONNECTION_MODES.VPN_TUN) {
+            } else if (context instanceof V2rayVPNService) {
                 stopIntent = new Intent(context, V2rayVPNService.class);
             } else {
+                Log.e("V2rayCoreManager", "Unknown service owner for notification stop action");
                 return false;
             }
             stopIntent.putExtra("COMMAND", AppConfigs.V2RAY_SERVICE_COMMANDS.STOP_SERVICE);
@@ -514,11 +518,11 @@ public final class V2rayCoreManager {
         return false;
     }
 
-    public Long getConnectedV2rayServerDelay() {
+    public Long getConnectedV2rayServerDelay(String url) {
         try {
-            if (coreController == null)
+            if (coreController == null || url == null || url.trim().isEmpty())
                 return -1L;
-            return coreController.measureDelay(AppConfigs.DELAY_URL);
+            return coreController.measureDelay(url);
         } catch (Exception e) {
             return -1L;
         }

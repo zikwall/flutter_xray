@@ -1,14 +1,16 @@
 # flutter_xray
 
-Android-first Flutter plugin for running an embedded Xray core in VPN or
-proxy-only mode.
+Android Flutter plugin for running an embedded Xray core in VPN or proxy-only
+mode.
 
 ## Platform support
 
 | Platform | Status |
 | --- | --- |
-| Android | Supported |
-| iOS | Compatibility stub only; VPN operation is not implemented |
+| Android API 24+ | Supported |
+
+The package intentionally declares only Android plugin support. Unsupported
+platforms are not represented by registration stubs that appear functional.
 
 The Android implementation currently embeds
 [`AndroidLibXrayLite`](https://github.com/2dust/AndroidLibXrayLite), backed by
@@ -99,7 +101,20 @@ if (await xray.requestPermission()) {
 }
 
 await xray.stop();
+await xray.dispose();
 ```
+
+`start()` completes after Android accepts the service request; `CONNECTED` is
+reported asynchronously through `onStatusChanged`. Calling `start()` while a
+session is starting or active returns `START_FAILED` instead of scheduling a
+second core. Calling `stop()` while disconnected is safe and does not start a
+service only to stop it.
+
+`initialize()` owns one status subscription. Reinitializing replaces the
+previous subscription, and `dispose()` releases it without disconnecting an
+active VPN. Native status-contract failures can be observed with
+`onStatusError`. Notification channels use the consuming application's label,
+not a package-owned product name.
 
 Set `proxyOnly: true` in `start` to run the configured local proxy without
 creating an Android VPN interface.
@@ -113,14 +128,17 @@ builder failures remain explicit startup errors.
 
 ## Development
 
-See [BUILDING.md](docs/BUILDING.md) for reproducible local checks and
-[TESTING.md](docs/TESTING.md) for the compatibility test matrix.
+See [BUILDING.md](https://github.com/zikwall/flutter_xray/blob/main/docs/BUILDING.md)
+for reproducible local checks and
+[TESTING.md](https://github.com/zikwall/flutter_xray/blob/main/docs/TESTING.md)
+for the compatibility test matrix.
 
 Clone with `--recurse-submodules` when working on native code. The pinned
 AndroidLibXrayLite and hev-socks5-tunnel sources are reproducible build inputs.
 The Android Xray AAR is built with the tracked `VpnService.protect` overlay;
 Xray and HEV runtime artifacts are accepted only with a matching build
-manifest. See [BUILDING.md](docs/BUILDING.md).
+manifest. See
+[BUILDING.md](https://github.com/zikwall/flutter_xray/blob/main/docs/BUILDING.md).
 
 ## License and third-party software
 

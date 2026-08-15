@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_xray/url/hysteria.dart';
 import 'package:flutter_xray/url/shadowsocks.dart';
@@ -22,20 +21,24 @@ export 'url/url.dart';
 class Xray {
   /// Creates a new Xray instance.
   /// [onStatusChanged] is called whenever the Xray connection status changes.
-  Xray({required this.onStatusChanged});
+  Xray({
+    void Function(XrayStatus status)? onStatusChanged,
+    this.onStatusError,
+  }) : onStatusChanged = onStatusChanged ?? _ignoreStatus;
 
   /// Callback function invoked when the Xray status changes.
   /// It receives an [XrayStatus] with connection and traffic details.
   final void Function(XrayStatus status) onStatusChanged;
 
+  /// Called when the native status stream fails or violates its event schema.
+  final void Function(Object error, StackTrace stackTrace)? onStatusError;
+
+  static void _ignoreStatus(XrayStatus status) {}
+
   /// Requests permission to use VPN access on Android.
   /// Returns a [Future] that completes with true if permission is granted, otherwise false.
-  /// On non-Android platforms, it defaults to granting permission.
   Future<bool> requestPermission() async {
-    if (Platform.isAndroid) {
-      return FlutterXrayPlatform.instance.requestPermission();
-    }
-    return true;
+    return FlutterXrayPlatform.instance.requestPermission();
   }
 
   /// Initializes the Xray client with notification settings and a status callback.
@@ -48,6 +51,7 @@ class Xray {
   }) async {
     await FlutterXrayPlatform.instance.initialize(
       onStatusChanged: onStatusChanged,
+      onStatusError: onStatusError,
       notificationIconResourceType: notificationIconResourceType,
       notificationIconResourceName: notificationIconResourceName,
     );
@@ -63,7 +67,8 @@ class Xray {
   /// connection. BadVPN is the explicit package default.
   /// [notificationDisconnectButtonName] is the text for the disconnect button in notifications.
   /// Throws an [ArgumentError] if the config is not valid JSON.
-  /// Returns a [Future] that completes when the service starts.
+  /// Returns when Android accepts the start request. Observe
+  /// [onStatusChanged] for the eventual CONNECTED or DISCONNECTED state.
   Future<void> start({
     required String remark,
     required String config,
@@ -73,13 +78,7 @@ class Xray {
     TunnelBackend tunnelBackend = TunnelBackend.badVpn,
     String notificationDisconnectButtonName = 'DISCONNECT',
   }) async {
-    try {
-      if (jsonDecode(config) == null) {
-        throw ArgumentError('The provided string is not valid JSON');
-      }
-    } catch (_) {
-      throw ArgumentError('The provided string is not valid JSON');
-    }
+    _validateJsonObject(config);
 
     await FlutterXrayPlatform.instance.start(
       remark: remark,
@@ -98,6 +97,10 @@ class Xray {
     await FlutterXrayPlatform.instance.stop();
   }
 
+  /// Releases the status-stream subscription owned by this controller.
+  /// This does not disconnect an active VPN session.
+  Future<void> dispose() => FlutterXrayPlatform.instance.dispose();
+
   /// Measures the delay using the provided Xray configuration.
   /// [config] is the Xray configuration in JSON format.
   /// [url] is the server URL to test for delay (default is 'https://google.com/generate_204').
@@ -107,13 +110,7 @@ class Xray {
     required String config,
     String url = 'https://google.com/generate_204',
   }) async {
-    try {
-      if (jsonDecode(config) == null) {
-        throw ArgumentError('The provided string is not valid JSON');
-      }
-    } catch (_) {
-      throw ArgumentError('The provided string is not valid JSON');
-    }
+    _validateJsonObject(config);
     return FlutterXrayPlatform.instance
         .getServerDelay(config: config, url: url);
   }
@@ -135,23 +132,15 @@ class Xray {
   /// Retrieves Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [List] of log lines.
   /// On Android, this fetches logs filtered by Xray-related tags.
-  /// On non-Android platforms, returns an empty list.
   Future<List<String>> getLogs() async {
-    if (Platform.isAndroid) {
-      return FlutterXrayPlatform.instance.getLogs();
-    }
-    return [];
+    return FlutterXrayPlatform.instance.getLogs();
   }
 
   /// Clears Xray logs from the system logcat.
   /// Returns a [Future] that completes with a [bool] indicating success.
   /// On Android, this clears the logcat buffer.
-  /// On non-Android platforms, returns true.
   Future<bool> clearLogs() async {
-    if (Platform.isAndroid) {
-      return FlutterXrayPlatform.instance.clearLogs();
-    }
-    return true;
+    return FlutterXrayPlatform.instance.clearLogs();
   }
 
   /// Parses an Xray-compatible share link.
@@ -177,6 +166,16 @@ class Xray {
         return HysteriaURL(url: url);
       default:
         throw ArgumentError('url is invalid');
+    }
+  }
+
+  static void _validateJsonObject(String config) {
+    try {
+      if (jsonDecode(config) is! Map<String, dynamic>) {
+        throw const FormatException('root is not an object');
+      }
+    } catch (_) {
+      throw ArgumentError.value(config, 'config', 'must be a JSON object');
     }
   }
 }
