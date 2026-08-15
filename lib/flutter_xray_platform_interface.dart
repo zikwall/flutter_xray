@@ -53,7 +53,7 @@ abstract class FlutterXrayPlatform extends PlatformInterface {
   /// [remark] is a string identifier for the connection.
   /// [config] is the Xray configuration in JSON format.
   /// [notificationDisconnectButtonName] is the text for the disconnect button in notifications.
-  /// [blockedApps] is an optional list of apps to block.
+  /// [blockedApps] is an optional list of Android packages excluded from the VPN.
   /// [bypassSubnets] is an optional list of subnets to bypass.
   /// [proxyOnly] is a boolean indicating whether to use proxy-only mode (default is false).
   /// [tunnelBackend] is the native backend identifier selected by the caller.

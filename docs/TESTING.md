@@ -1,7 +1,9 @@
 # Test matrix
 
 Recorded device runs live under [`device-tests/`](device-tests/). The latest
-three-backend packet-path evidence is
+correctness hardening evidence is
+[`2026-08-16-tunnel-correctness-hardening.md`](device-tests/2026-08-16-tunnel-correctness-hardening.md).
+The earlier three-backend packet-path evidence is
 [`2026-08-15-h3-grpc-tunnel-benchmark.md`](device-tests/2026-08-15-h3-grpc-tunnel-benchmark.md),
 and the rejected owner-process baseline is explained in
 [`2026-08-15-android-tunnel-benchmark.md`](device-tests/2026-08-15-android-tunnel-benchmark.md).
@@ -211,6 +213,19 @@ flutter test integration_test/hev_device_test.dart -d <device-id> \
 
 Verify UDP ingress before the device run and remove the ephemeral process and
 files afterwards. A public resolver timeout is not controlled UDP evidence.
+
+The DNS/UDP observation host must have a different public address from the
+Xray endpoint. Sending a tunneled probe back to the endpoint's own public
+address exercises a provider-specific self-hairpin path and can fail for every
+backend even when ordinary remote UDP works. A credential-free `freedom`
+profile is likewise suitable for lifecycle isolation, but a resolver timeout
+on that route must be checked against HEV and Xray controls before it is called
+a BadVPN failure.
+
+The bundled Android BadVPN fork has two mutually exclusive UDP modes. Use
+`--socks5-udp` with Xray's standard SOCKS5 UDP ASSOCIATE inbound. Do not combine
+it with `--enable-udprelay`: the legacy Android relay has precedence when both
+flags are supplied, so SOCKS5 UDP is silently disabled.
 
 Set `FLUTTER_XRAY_DEVICE_HOLD_SECONDS` to keep the verified tunnel active while
 the device is sent to background or sleep and post-wake traffic is checked.

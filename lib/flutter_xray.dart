@@ -56,7 +56,7 @@ class Xray {
   /// Starts Xray with the given configuration and settings.
   /// [remark] is a string identifier for the connection.
   /// [config] is the Xray configuration in JSON format.
-  /// [blockedApps] is an optional list of app package names to block.
+  /// [blockedApps] is an optional list of Android packages excluded from the VPN.
   /// [bypassSubnets] is an optional list of subnets to bypass the VPN.
   /// [proxyOnly] is a boolean indicating whether to run in proxy-only mode.
   /// [tunnelBackend] selects the Android packet tunnel implementation for this

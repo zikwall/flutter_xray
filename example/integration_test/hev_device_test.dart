@@ -63,6 +63,9 @@ const _dnsProbePort = int.fromEnvironment(
 const _dnsSourceUrl = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_DNS_SOURCE_URL',
 );
+const _expectedDnsSource = String.fromEnvironment(
+  'FLUTTER_XRAY_DEVICE_EXPECTED_DNS_SOURCE',
+);
 const _expectedTunnelEgress = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_EXPECTED_TUNNEL_EGRESS',
 );
@@ -311,10 +314,10 @@ Future<void> _stopAndWait({
 }
 
 Future<void> _runPacketProbes(String profileId, {required int run}) async {
-  final ipv4Result = await _downloadWithRetry(Uri.parse(_ipv4Url));
-  expect(ipv4Result.bytes, greaterThan(0));
-  _evidence('IPV4_TCP', ipv4Result, profileId: profileId, run: run);
-
+  // CONNECTED means that the local core and TUN path own their resources. The
+  // first remote transport handshake can still be warming up, especially for
+  // H3. Gate the measured probes on the expected egress instead of treating a
+  // transient cold-handshake failure as a tunnel-backend failure.
   if (_expectedTunnelEgress.isNotEmpty) {
     final egress = await _waitForExpectedEgress(_expectedTunnelEgress);
     expect(egress, _expectedTunnelEgress);
@@ -323,6 +326,10 @@ Future<void> _runPacketProbes(String profileId, {required int run}) async {
       'matches_tunnel=${egress == _expectedTunnelEgress}',
     );
   }
+
+  final ipv4Result = await _downloadWithRetry(Uri.parse(_ipv4Url));
+  expect(ipv4Result.bytes, greaterThan(0));
+  _evidence('IPV4_TCP', ipv4Result, profileId: profileId, run: run);
 
   if (_ipv6Url.isNotEmpty) {
     final ipv6Result = await _downloadWithRetry(Uri.parse(_ipv6Url));
@@ -379,12 +386,16 @@ Future<void> _runPacketProbes(String profileId, {required int run}) async {
         Uri.encodeQueryComponent(hostname),
       );
       final source = (await _downloadText(Uri.parse(sourceUrl))).trim();
-      if (_expectedTunnelEgress.isNotEmpty) {
-        expect(source, _expectedTunnelEgress);
+      final expectedSource =
+          _expectedDnsSource.isEmpty
+              ? _expectedTunnelEgress
+              : _expectedDnsSource;
+      if (expectedSource.isNotEmpty) {
+        expect(source, expectedSource);
       }
       debugPrint(
         'DEVICE_EVIDENCE DNS_SOURCE profile=$profileId '
-        'matches_tunnel=${source == _expectedTunnelEgress}',
+        'matches_tunnel=${source == expectedSource}',
       );
     }
   }
@@ -403,9 +414,12 @@ Future<void> _runPacketProbes(String profileId, {required int run}) async {
 Future<String> _waitForExpectedEgress(String expected) async {
   String lastEgress = '';
   Object? lastError;
-  for (var attempt = 0; attempt < 20; attempt += 1) {
+  for (var attempt = 0; attempt < 15; attempt += 1) {
     try {
-      lastEgress = (await _downloadText(Uri.parse(_egressUrl))).trim();
+      lastEgress =
+          (await _downloadText(
+            Uri.parse(_egressUrl),
+          ).timeout(const Duration(seconds: 4))).trim();
       if (lastEgress == expected) return lastEgress;
       lastError = null;
     } catch (error) {
@@ -425,6 +439,7 @@ Future<void> _runBlockedAppsProbe({
   required String Function() state,
   required Stream<String> changes,
 }) async {
+  debugPrint('DEVICE_EVIDENCE BLOCKED_APPS phase=control started=true');
   await _startAndWait(
     xray: xray,
     remark: '$_backendName blockedApps control',
@@ -432,24 +447,56 @@ Future<void> _runBlockedAppsProbe({
     state: state,
     changes: changes,
   );
-  final tunneled = (await _downloadText(Uri.parse(_egressUrl))).trim();
+  final tunneled =
+      _expectedTunnelEgress.isEmpty
+          ? (await _downloadText(Uri.parse(_egressUrl))).trim()
+          : await _waitForExpectedEgress(_expectedTunnelEgress);
   if (_expectedTunnelEgress.isNotEmpty) {
     expect(tunneled, _expectedTunnelEgress);
   }
   await _stopAndWait(xray: xray, state: state, changes: changes);
 
+  debugPrint('DEVICE_EVIDENCE BLOCKED_APPS phase=bypass started=true');
   await _startAndWait(
     xray: xray,
     remark: '$_backendName blockedApps bypass',
     config: config,
-    blockedApps: const [_testPackage],
+    blockedApps: [
+      for (var index = 0; index < 1000; index += 1)
+        'dev.zikwall.flutter_xray.missing.$index',
+      _testPackage,
+    ],
     state: state,
     changes: changes,
   );
-  final bypassed = (await _downloadText(Uri.parse(_egressUrl))).trim();
+  final bypassed = await _waitForDifferentEgress(tunneled);
   expect(bypassed, isNot(tunneled));
   await _stopAndWait(xray: xray, state: state, changes: changes);
-  debugPrint('DEVICE_EVIDENCE BLOCKED_APPS passed=true');
+  debugPrint(
+    'DEVICE_EVIDENCE BLOCKED_APPS passed=true unavailable_ignored=1000',
+  );
+}
+
+Future<String> _waitForDifferentEgress(String tunneled) async {
+  String lastEgress = tunneled;
+  Object? lastError;
+  for (var attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      lastEgress =
+          (await _downloadText(
+            Uri.parse(_egressUrl),
+          ).timeout(const Duration(seconds: 4))).trim();
+      if (lastEgress.isNotEmpty && lastEgress != tunneled) return lastEgress;
+      lastError = null;
+    } catch (error) {
+      lastError = error;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+  if (lastError != null && lastEgress == tunneled) {
+    Error.throwWithStackTrace(lastError, StackTrace.current);
+  }
+  return lastEgress;
 }
 
 Future<void> _waitForState({
@@ -490,13 +537,13 @@ Future<_DownloadResult> _download(Uri uri) async {
 
 Future<_DownloadResult> _downloadWithRetry(Uri uri) async {
   Object? lastError;
-  for (var attempt = 0; attempt < 2; attempt += 1) {
+  for (var attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await _download(uri);
     } catch (error) {
       lastError = error;
-      if (attempt == 0) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(milliseconds: 500 * (attempt + 1)));
       }
     }
   }
@@ -523,7 +570,12 @@ Future<Duration> _udpDnsQuery(
   int port,
   String hostname,
 ) async {
-  final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+  final socket = await RawDatagramSocket.bind(
+    server.type == InternetAddressType.IPv6
+        ? InternetAddress.anyIPv6
+        : InternetAddress.anyIPv4,
+    0,
+  );
   final random = Random.secure();
   final transactionId = random.nextInt(0x10000);
   final query = BytesBuilder(copy: false)..add([
@@ -572,7 +624,12 @@ Future<Duration> _udpDnsQuery(
 }
 
 Future<Duration> _udpEcho(InternetAddress server, int port) async {
-  final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+  final socket = await RawDatagramSocket.bind(
+    server.type == InternetAddressType.IPv6
+        ? InternetAddress.anyIPv6
+        : InternetAddress.anyIPv4,
+    0,
+  );
   final payload = List<int>.generate(32, (index) => index);
   final stopwatch = Stopwatch()..start();
   try {
