@@ -3,10 +3,14 @@ set -Eeuo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 package="dev.zikwall.flutter_xray.example"
+probe_package="dev.zikwall.flutter_xray.benchmark_probe"
+probe_activity="${probe_package}/.BenchmarkProbeActivity"
 device=""
 defines_file=""
 profile_filter=""
 benchmark_url=""
+egress_url="https://api.ipify.org"
+expected_egress=""
 rounds=6
 warmup_seconds=5
 measure_seconds=30
@@ -18,6 +22,7 @@ require_unplugged="false"
 
 usage() {
   echo "Usage: $0 --url=<fixed-dev-payload-url> [options]"
+  echo "  --expected-egress=<dev-egress-ip> [--egress-url=https://api.ipify.org]"
   echo "  --device=<adb-id> --defines=<ignored.device.local.json> --profile=<id>"
   echo "  --rounds=6 --warmup-seconds=5 --measure-seconds=30 --cooldown-seconds=5"
   echo "  --concurrency=1 --sample-interval-seconds=2 --mode=profile|release"
@@ -31,6 +36,8 @@ for argument in "$@"; do
     --defines=*) defines_file="${argument#*=}" ;;
     --profile=*) profile_filter="${argument#*=}" ;;
     --url=*) benchmark_url="${argument#*=}" ;;
+    --egress-url=*) egress_url="${argument#*=}" ;;
+    --expected-egress=*) expected_egress="${argument#*=}" ;;
     --rounds=*) rounds="${argument#*=}" ;;
     --warmup-seconds=*) warmup_seconds="${argument#*=}" ;;
     --measure-seconds=*) measure_seconds="${argument#*=}" ;;
@@ -58,6 +65,11 @@ if [[ ! "${benchmark_url}" =~ ^https?:// ]]; then
   echo "An explicit HTTP(S) benchmark URL is required; there is no public default" >&2
   exit 64
 fi
+if [[ ! "${egress_url}" =~ ^https?:// ]] || [[ -z "${expected_egress}" ]] ||
+    [[ ! "${expected_egress}" =~ ^[a-zA-Z0-9.:_-]+$ ]]; then
+  echo "An explicit safe expected egress and HTTP(S) egress URL are required" >&2
+  exit 64
+fi
 for value in "${rounds}" "${warmup_seconds}" "${measure_seconds}" "${concurrency}"; do
   is_positive_integer "${value}" || { echo "Expected a positive integer: ${value}" >&2; exit 64; }
 done
@@ -81,6 +93,16 @@ fi
 flutter_bin="${FLUTTER_BIN:-$(command -v flutter)}"
 dart_bin="${DART_BIN:-$(command -v dart)}"
 adb_bin="${ADB_BIN:-$(command -v adb 2>/dev/null || true)}"
+if ! java -version >/dev/null 2>&1; then
+  bundled_jdk="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+  if [[ -x "${bundled_jdk}/bin/java" ]]; then
+    export JAVA_HOME="${bundled_jdk}"
+    export PATH="${JAVA_HOME}/bin:${PATH}"
+  else
+    echo "A working Java runtime is required to build the benchmark probe" >&2
+    exit 1
+  fi
+fi
 if [[ -z "${adb_bin}" && -n "${ANDROID_SDK_ROOT:-}" ]]; then
   adb_bin="${ANDROID_SDK_ROOT}/platform-tools/adb"
 fi
@@ -158,16 +180,26 @@ original_screen_timeout=$("${adb_bin}" -s "${device}" shell settings get system 
 logcat_pid=""
 sampler_pid=""
 permission_pid=""
+probe_launcher_pid=""
 drive_pid=""
+probe_installed="false"
 
 cleanup() {
   local pid
-  for pid in "${permission_pid}" "${sampler_pid}" "${logcat_pid}"; do
+  for pid in "${drive_pid}" "${permission_pid}" "${probe_launcher_pid}" "${sampler_pid}" "${logcat_pid}"; do
     if [[ -n "${pid}" ]]; then
       kill "${pid}" >/dev/null 2>&1 || true
       wait "${pid}" >/dev/null 2>&1 || true
     fi
   done
+  "${adb_bin}" -s "${device}" shell am force-stop "${package}" \
+    >/dev/null 2>&1 || true
+  if [[ "${probe_installed}" == "true" ]]; then
+    "${adb_bin}" -s "${device}" shell am force-stop "${probe_package}" \
+      >/dev/null 2>&1 || true
+    "${adb_bin}" -s "${device}" uninstall "${probe_package}" \
+      >/dev/null 2>&1 || true
+  fi
   if [[ "${original_stay_awake}" =~ ^[0-9]+$ ]]; then
     "${adb_bin}" -s "${device}" shell settings put global \
       stay_on_while_plugged_in "${original_stay_awake}" >/dev/null 2>&1 || true
@@ -215,6 +247,9 @@ is_positive_integer "${clock_ticks}" || {
   echo "clock_ticks=${clock_ticks}"
   echo "build_mode=${build_mode}"
   echo "benchmark_url=${benchmark_url}"
+  echo "egress_url=${egress_url}"
+  echo "expected_egress=${expected_egress}"
+  echo "probe_package=${probe_package}"
   echo "profile=${profile_filter:-direct}"
   echo "rounds=${rounds}"
   echo "schedule=${schedule}"
@@ -259,7 +294,7 @@ read_environment_sample() {
 
 sample_processes() {
   set +e
-  local phase_id sample_ms app_uid environment thermal battery_temperature charge wifi_rssi
+  local phase_id sample_ms app_uid probe_uid environment thermal battery_temperature charge wifi_rssi
   local ps_rows uid pid ppid name stat_line stat_tail cpu_ticks start_ticks status rss
   local sample_buffer process_line
   echo "sampler_started" >>"${sampler_log}"
@@ -273,7 +308,10 @@ sample_processes() {
     app_uid=$("${adb_bin}" -s "${device}" shell cmd package list packages \
       -U "${package}" 2>/dev/null |
       sed -n "s/^package:${package} uid:\([0-9][0-9]*\)$/\1/p" | head -n 1)
-    if [[ -z "${app_uid}" ]]; then
+    probe_uid=$("${adb_bin}" -s "${device}" shell cmd package list packages \
+      -U "${probe_package}" 2>/dev/null |
+      sed -n "s/^package:${probe_package} uid:\([0-9][0-9]*\)$/\1/p" | head -n 1)
+    if [[ -z "${app_uid}" || -z "${probe_uid}" ]]; then
       sleep 0.2
       continue
     fi
@@ -284,7 +322,8 @@ sample_processes() {
       "${phase_id}" "${sample_ms}" "" "" "" "" "" "" "" "" \
       "${thermal}" "${battery_temperature}" "${charge}" "${wifi_rssi}")
     ps_rows=$("${adb_bin}" -s "${device}" shell ps -A -o UID,PID,PPID,NAME 2>/dev/null |
-      awk -v expected_uid="${app_uid}" 'NR > 1 && $1 == expected_uid {print $1, $2, $3, $4}')
+      awk -v app_uid="${app_uid}" -v probe_uid="${probe_uid}" \
+        'NR > 1 && ($1 == app_uid || $1 == probe_uid) {print $1, $2, $3, $4}')
     printf '%s\n' "${ps_rows}" | sed '/^$/d; s/^/process_row=/' >>"${sampler_log}"
     while read -r uid pid ppid name; do
       [[ -n "${pid:-}" ]] || continue
@@ -311,6 +350,51 @@ sample_processes() {
       echo "discarded_edge_sample=${phase_id}" >>"${sampler_log}"
     fi
     sleep "${sample_interval_seconds}"
+  done
+}
+
+launch_external_probes() {
+  set +e
+  local seen_file="${result_root}/probe-phases.seen"
+  local line phase_id profile backend round position callback_port
+  local url_b64 egress_url_b64
+  : >"${seen_file}"
+  url_b64=$(printf '%s' "${benchmark_url}" | base64 | tr -d '\r\n')
+  egress_url_b64=$(printf '%s' "${egress_url}" | base64 | tr -d '\r\n')
+  while [[ -n "${drive_pid}" ]] && kill -0 "${drive_pid}" 2>/dev/null; do
+    while IFS= read -r line; do
+      phase_id=$(printf '%s\n' "${line}" | sed -n 's/.* phase_id=\([^ ]*\).*/\1/p')
+      [[ -n "${phase_id}" ]] || continue
+      grep -Fxq "${phase_id}" "${seen_file}" && continue
+      profile=$(printf '%s\n' "${line}" | sed -n 's/.* profile=\([^ ]*\).*/\1/p')
+      backend=$(printf '%s\n' "${line}" | sed -n 's/.* backend=\([^ ]*\).*/\1/p')
+      round=$(printf '%s\n' "${line}" | sed -n 's/.* round=\([0-9]*\).*/\1/p')
+      position=$(printf '%s\n' "${line}" | sed -n 's/.* position=\([0-9]*\).*/\1/p')
+      callback_port=$(printf '%s\n' "${line}" | sed -n 's/.* callback_port=\([0-9]*\).*/\1/p')
+      if [[ -z "${profile}" || -z "${backend}" || -z "${round}" ||
+          -z "${position}" || -z "${callback_port}" ]]; then
+        continue
+      fi
+      printf '%s\n' "${phase_id}" >>"${seen_file}"
+      "${adb_bin}" -s "${device}" shell am force-stop "${probe_package}" \
+        </dev/null >/dev/null 2>&1 || true
+      "${adb_bin}" -s "${device}" shell am start --user 0 \
+        --activity-clear-task -n "${probe_activity}" \
+        --es phase_id "${phase_id}" \
+        --es profile "${profile}" \
+        --es backend "${backend}" \
+        --ei round "${round}" \
+        --ei position "${position}" \
+        --ei concurrency "${concurrency}" \
+        --ei warmup_seconds "${warmup_seconds}" \
+        --ei measure_seconds "${measure_seconds}" \
+        --ei callback_port "${callback_port}" \
+        --es url_b64 "${url_b64}" \
+        --es egress_url_b64 "${egress_url_b64}" \
+        --es expected_egress "${expected_egress}" \
+        </dev/null >>"${sampler_log}" 2>&1
+    done < <(grep 'DEVICE_BENCHMARK PROBE_READY ' "${logcat_file}" 2>/dev/null || true)
+    sleep 0.2
   done
 }
 
@@ -346,6 +430,18 @@ accept_vpn_permission() {
 "${adb_bin}" -s "${device}" logcat -v threadtime >"${logcat_file}" 2>&1 &
 logcat_pid=$!
 
+(
+  cd "${repo_root}/example/android"
+  ./gradlew :benchmark_probe:assembleRelease
+)
+probe_apk="${repo_root}/example/build/benchmark_probe/outputs/apk/release/benchmark_probe-release.apk"
+if [[ ! -f "${probe_apk}" ]]; then
+  echo "Benchmark probe APK was not produced: ${probe_apk}" >&2
+  exit 1
+fi
+"${adb_bin}" -s "${device}" install -r "${probe_apk}" >/dev/null
+probe_installed="true"
+
 drive_arguments=(
   drive
   --"${build_mode}"
@@ -374,6 +470,8 @@ fi
 drive_pid=$!
 sample_processes &
 sampler_pid=$!
+launch_external_probes &
+probe_launcher_pid=$!
 accept_vpn_permission &
 permission_pid=$!
 
@@ -382,13 +480,14 @@ wait "${drive_pid}"
 drive_status=$?
 set -e
 sleep 2
-for pid in "${permission_pid}" "${sampler_pid}" "${logcat_pid}"; do
+for pid in "${permission_pid}" "${probe_launcher_pid}" "${sampler_pid}" "${logcat_pid}"; do
   if [[ -n "${pid}" ]]; then
     kill "${pid}" >/dev/null 2>&1 || true
     wait "${pid}" >/dev/null 2>&1 || true
   fi
 done
 permission_pid=""
+probe_launcher_pid=""
 sampler_pid=""
 logcat_pid=""
 
@@ -397,6 +496,7 @@ foreground_service_failures=$(grep -E \
   "${package}|V2rayVPNService|V2rayProxyOnlyService" "${logcat_file}" |
   grep -Ec "${fgs_failure_pattern}" || true)
 daemon_crashes=$(grep -c "Process: ${package}:RunSoLibV2RayDaemon" "${logcat_file}" || true)
+transfer_error_events=$(grep -c 'DEVICE_BENCHMARK TRANSFER_ERROR ' "${logcat_file}" || true)
 grep 'DEVICE_BENCHMARK' "${logcat_file}" >"${result_root}/evidence.txt" || true
 expected_phases=$((rounds * 3))
 actual_phases=$(grep -c 'DEVICE_BENCHMARK RESULT ' "${logcat_file}" || true)
@@ -407,6 +507,7 @@ if ! "${dart_bin}" run "${repo_root}/tool/device/benchmark_report.dart" \
   "--metrics=${metrics_file}" \
   "--output=${result_root}" \
   "--package=${package}" \
+  "--probe-package=${probe_package}" \
   "--clock-ticks=${clock_ticks}"; then
   report_status=1
 fi
@@ -418,6 +519,7 @@ fi
   echo "actual_phases=${actual_phases}"
   echo "foreground_service_failures=${foreground_service_failures}"
   echo "daemon_crashes=${daemon_crashes}"
+  echo "transfer_error_events=${transfer_error_events}"
   echo "result_directory=${result_root}"
 } | tee "${result_root}/acceptance.txt"
 

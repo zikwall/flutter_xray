@@ -9,17 +9,20 @@ void main(List<String> arguments) {
   final metricsPath = options['metrics'];
   final outputDirectory = options['output'];
   final packageName = options['package'];
+  final probePackageName = options['probe-package'];
   final clockTicks = int.tryParse(options['clock-ticks'] ?? '');
   if (logPath == null ||
       metricsPath == null ||
       outputDirectory == null ||
       packageName == null ||
+      probePackageName == null ||
       clockTicks == null ||
       clockTicks <= 0) {
     stderr.writeln(
       'Usage: dart run tool/device/benchmark_report.dart '
       '--log=<drive.log> --metrics=<metrics.tsv> --output=<directory> '
-      '--package=<application-id> --clock-ticks=<CLK_TCK>',
+      '--package=<application-id> --probe-package=<application-id> '
+      '--clock-ticks=<CLK_TCK>',
     );
     exitCode = 64;
     return;
@@ -29,6 +32,7 @@ void main(List<String> arguments) {
     logContent: File(logPath).readAsStringSync(),
     metricsContent: File(metricsPath).readAsStringSync(),
     packageName: packageName,
+    probePackageName: probePackageName,
     clockTicksPerSecond: clockTicks,
   );
   final output = Directory(outputDirectory)..createSync(recursive: true);
@@ -42,6 +46,7 @@ BenchmarkReport buildBenchmarkReport({
   required String logContent,
   required String metricsContent,
   required String packageName,
+  required String probePackageName,
   required int clockTicksPerSecond,
 }) {
   final results = _parseResults(logContent);
@@ -75,6 +80,7 @@ BenchmarkReport buildBenchmarkReport({
         environment,
         processes,
         packageName,
+        probePackageName,
         clockTicksPerSecond,
       ),
     );
@@ -143,6 +149,7 @@ PhaseSummary _summarizePhase(
   List<EnvironmentMetric> environment,
   List<ProcessMetric> processes,
   String packageName,
+  String probePackageName,
   int clockTicksPerSecond,
 ) {
   final firstSampleMs = environment.first.sampleMs;
@@ -170,7 +177,8 @@ PhaseSummary _summarizePhase(
     if (processSeconds <= 0) continue;
     final normalizedDelta = (delta * sampledSeconds / processSeconds).round();
     uidTickDelta += normalizedDelta;
-    if (samples.first.name != packageName) {
+    if (samples.first.name != packageName &&
+        samples.first.name != probePackageName) {
       runtimeTickDelta += normalizedDelta;
     }
   }
@@ -181,6 +189,7 @@ PhaseSummary _summarizePhase(
   final requiredNames = <String>{
     packageName,
     '$packageName:RunSoLibV2RayDaemon',
+    probePackageName,
     if (result.backend == 'badvpn') 'libtun2socks.so',
   };
   final missingNames = requiredNames.difference(stableNames);
@@ -214,7 +223,10 @@ PhaseSummary _summarizePhase(
           .add(pssValues.fold(0, (sum, value) => sum + value.pssKb).toDouble());
       runtimePss.add(
         pssValues
-            .where((value) => value.name != packageName)
+            .where(
+              (value) =>
+                  value.name != packageName && value.name != probePackageName,
+            )
             .fold(0, (sum, value) => sum + value.pssKb)
             .toDouble(),
       );
@@ -224,7 +236,10 @@ PhaseSummary _summarizePhase(
           .add(rssValues.fold(0, (sum, value) => sum + value.rssKb).toDouble());
       runtimeRss.add(
         rssValues
-            .where((value) => value.name != packageName)
+            .where(
+              (value) =>
+                  value.name != packageName && value.name != probePackageName,
+            )
             .fold(0, (sum, value) => sum + value.rssKb)
             .toDouble(),
       );
@@ -698,7 +713,8 @@ class BenchmarkReport {
       ..writeln()
       ..writeln(
         '| Profile | Backend | N | Mbps median | Mbps mean ± SD | CV | '
-        'UID CPU | VPN CPU | UID RSS | VPN RSS | Thermal | Wi-Fi RSSI |',
+        'Test UIDs CPU | VPN CPU | Test UIDs RSS | VPN RSS | Thermal | '
+        'Wi-Fi RSSI |',
       )
       ..writeln(
         '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | '
@@ -722,10 +738,10 @@ class BenchmarkReport {
     buffer
       ..writeln()
       ..writeln(
-        'CPU uses cumulative process ticks during steady-state only. UID totals '
-        'include the traffic-generating Flutter process; VPN totals include every '
-        'same-UID process except the main application process, including the '
-        'standalone BadVPN child process. RSS is read from /proc without '
+        'CPU uses cumulative process ticks during steady-state only. Test UID '
+        'totals include both benchmark application UIDs; VPN totals exclude the idle '
+        'VPN-owner process and the separate traffic-probe process, while retaining '
+        'the Xray daemon and standalone BadVPN child process. RSS is read from /proc without '
         'requesting a GC; PSS columns are blank unless the input came from a '
         'separate memory-only sampler.',
       );

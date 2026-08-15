@@ -38,14 +38,6 @@ const _coreLogLevel = String.fromEnvironment(
   'FLUTTER_XRAY_DEVICE_CORE_LOG_LEVEL',
   defaultValue: 'warning',
 );
-const _expectedTunnelEgress = String.fromEnvironment(
-  'FLUTTER_XRAY_DEVICE_EXPECTED_TUNNEL_EGRESS',
-);
-const _egressUrl = String.fromEnvironment(
-  'FLUTTER_XRAY_DEVICE_EGRESS_URL',
-  defaultValue: 'https://api.ipify.org',
-);
-
 const _directConfig = r'''
 {
   "log": {"loglevel": "warning"},
@@ -115,43 +107,15 @@ void main() {
             current: () => state,
             changes: changes.stream,
           );
-          await _verifyTunnelEgress();
-          await _transferFor(
-            Uri.parse(_benchmarkUrl),
-            const Duration(seconds: _warmupSeconds),
-            _concurrency,
+          final probePassed = await _runExternalProbe(
+            phaseId: phaseId,
+            profile: profile.id,
+            backend: backendName,
+            round: round,
+            position: position,
           );
-
-          final startedAt = DateTime.now().millisecondsSinceEpoch;
-          debugPrint(
-            'DEVICE_BENCHMARK PHASE_BEGIN phase_id=$phaseId '
-            'profile=${profile.id} backend=$backendName round=$round '
-            'position=$position concurrency=$_concurrency '
-            'unix_ms=$startedAt',
-          );
-          final result = await _transferFor(
-            Uri.parse(_benchmarkUrl),
-            const Duration(seconds: _measureSeconds),
-            _concurrency,
-          );
-          final endedAt = DateTime.now().millisecondsSinceEpoch;
-          debugPrint(
-            'DEVICE_BENCHMARK PHASE_END phase_id=$phaseId unix_ms=$endedAt',
-          );
-          debugPrint(
-            'DEVICE_BENCHMARK RESULT phase_id=$phaseId '
-            'profile=${profile.id} backend=$backendName round=$round '
-            'position=$position concurrency=$_concurrency bytes=${result.bytes} '
-            'elapsed_ms=${result.elapsed.inMilliseconds} '
-            'mbps=${result.megabitsPerSecond.toStringAsFixed(3)} '
-            'requests=${result.requests} errors=${result.errors} '
-            'error_types=${result.errorTypes.join(',')}',
-          );
-          if (result.bytes <= 100000 || result.errors != 0) {
-            phaseFailures.add(
-              '$phaseId(bytes=${result.bytes}, errors=${result.errors}, '
-              'types=${result.errorTypes.join(',')})',
-            );
+          if (!probePassed) {
+            phaseFailures.add('$phaseId(external_probe_failed)');
           }
         } finally {
           if (state != 'DISCONNECTED') {
@@ -278,104 +242,40 @@ TunnelBackend _backend(String value) {
   throw ArgumentError.value(value, 'backend');
 }
 
-Future<void> _verifyTunnelEgress() async {
-  if (_expectedTunnelEgress.isEmpty) return;
-  final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
-  try {
-    final request = await client.getUrl(Uri.parse(_egressUrl));
-    final response = await request.close().timeout(const Duration(seconds: 20));
-    final egress = (await utf8.decoder.bind(response).join()).trim();
-    expect(egress, _expectedTunnelEgress);
-  } finally {
-    client.close(force: true);
-  }
-}
-
-Future<_TransferResult> _transferFor(
-  Uri uri,
-  Duration duration,
-  int concurrency,
-) async {
-  final stopwatch = Stopwatch()..start();
-  final deadline = DateTime.now().add(duration);
-  final workers = List.generate(
-    concurrency,
-    (worker) => _transferWorker(uri, deadline, worker),
-  );
-  final results = await Future.wait(workers);
-  stopwatch.stop();
-  return _TransferResult(
-    bytes: results.fold(0, (sum, result) => sum + result.bytes),
-    requests: results.fold(0, (sum, result) => sum + result.requests),
-    errors: results.fold(0, (sum, result) => sum + result.errors),
-    errorTypes:
-        results.expand((result) => result.errorTypes).toSet().toList()..sort(),
-    elapsed: stopwatch.elapsed,
-  );
-}
-
-Future<_WorkerResult> _transferWorker(
-  Uri uri,
-  DateTime deadline,
-  int worker,
-) async {
-  final client =
-      HttpClient()
-        ..autoUncompress = false
-        ..connectionTimeout = const Duration(seconds: 15);
-  var bytes = 0;
-  var requests = 0;
-  var errors = 0;
-  final errorTypes = <String>{};
-  try {
-    while (DateTime.now().isBefore(deadline)) {
-      try {
-        final request = await client
-            .getUrl(uri)
-            .timeout(deadline.difference(DateTime.now()));
-        request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
-        request.headers.set('X-Flutter-Xray-Benchmark-Worker', '$worker');
-        final remaining = deadline.difference(DateTime.now());
-        final response = await request.close().timeout(
-          remaining < const Duration(seconds: 20)
-              ? remaining
-              : const Duration(seconds: 20),
-        );
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw HttpException(
-            'Unexpected benchmark status ${response.statusCode}',
-            uri: uri,
-          );
-        }
-        requests += 1;
-        await for (final chunk in response.timeout(
-          const Duration(seconds: 20),
-        )) {
-          bytes += chunk.length;
-          if (!DateTime.now().isBefore(deadline)) {
-            client.close(force: true);
-            break;
-          }
-        }
-      } catch (error) {
-        if (DateTime.now().isBefore(deadline) || bytes == 0) {
-          errors += 1;
-          errorTypes.add(error.runtimeType.toString());
-        }
-        if (DateTime.now().isBefore(deadline)) {
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-        }
-      }
+Future<bool> _runExternalProbe({
+  required String phaseId,
+  required String profile,
+  required String backend,
+  required int round,
+  required int position,
+}) async {
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  final completed = Completer<bool>();
+  final subscription = server.listen((request) async {
+    final callbackPhase = request.uri.queryParameters['phase_id'];
+    final callbackOk = request.uri.queryParameters['ok'] == 'true';
+    if (request.uri.path == '/done' && callbackPhase == phaseId) {
+      if (!completed.isCompleted) completed.complete(callbackOk);
+      request.response.statusCode = HttpStatus.noContent;
+    } else {
+      request.response.statusCode = HttpStatus.badRequest;
     }
+    await request.response.close();
+  });
+  try {
+    debugPrint(
+      'DEVICE_BENCHMARK PROBE_READY phase_id=$phaseId profile=$profile '
+      'backend=$backend round=$round position=$position '
+      'concurrency=$_concurrency callback_port=${server.port}',
+    );
+    return await completed.future.timeout(
+      Duration(seconds: _warmupSeconds + _measureSeconds + 30),
+      onTimeout: () => false,
+    );
   } finally {
-    client.close(force: true);
+    await subscription.cancel();
+    await server.close(force: true);
   }
-  return _WorkerResult(
-    bytes: bytes,
-    requests: requests,
-    errors: errors,
-    errorTypes: errorTypes,
-  );
 }
 
 Future<void> _waitForState({
@@ -401,36 +301,4 @@ class _BenchmarkProfile {
 
   final String id;
   final String config;
-}
-
-class _TransferResult {
-  const _TransferResult({
-    required this.bytes,
-    required this.requests,
-    required this.errors,
-    required this.errorTypes,
-    required this.elapsed,
-  });
-
-  final int bytes;
-  final int requests;
-  final int errors;
-  final List<String> errorTypes;
-  final Duration elapsed;
-
-  double get megabitsPerSecond => bytes * 8 / elapsed.inMicroseconds;
-}
-
-class _WorkerResult {
-  const _WorkerResult({
-    required this.bytes,
-    required this.requests,
-    required this.errors,
-    required this.errorTypes,
-  });
-
-  final int bytes;
-  final int requests;
-  final int errors;
-  final Set<String> errorTypes;
 }

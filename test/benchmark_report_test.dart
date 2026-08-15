@@ -3,8 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../tool/device/benchmark_report.dart';
 
 void main() {
-  test('includes standalone BadVPN process in UID and VPN runtime metrics', () {
+  test('separates traffic-probe and BadVPN runtime metrics', () {
     const packageName = 'dev.zikwall.flutter_xray.example';
+    const probePackageName = 'dev.zikwall.flutter_xray.benchmark_probe';
     final log = ['badvpn', 'xray', 'hev'].asMap().entries.map((entry) {
       final position = entry.key + 1;
       final backend = entry.value;
@@ -43,6 +44,11 @@ void main() {
             '0\t280\t4000000\t-50',
           );
         }
+        metrics.writeln(
+          'process\t$phase\t$timestamp\t10124\t13\t1\t400\t'
+          '${timestamp == 1000 ? 400 : 405}\t$probePackageName\t30\t40\t'
+          '0\t280\t4000000\t-50',
+        );
       }
     }
 
@@ -50,15 +56,16 @@ void main() {
       logContent: log,
       metricsContent: metrics.toString(),
       packageName: packageName,
+      probePackageName: probePackageName,
       clockTicksPerSecond: 100,
     );
     final badVpn = report.phases.firstWhere(
       (phase) => phase.result.backend == 'badvpn',
     );
 
-    expect(badVpn.uidCpuPercent, closeTo(60, 0.001));
+    expect(badVpn.uidCpuPercent, closeTo(65, 0.001));
     expect(badVpn.runtimeCpuPercent, closeTo(50, 0.001));
-    expect(badVpn.uidPssMeanKb, 170);
+    expect(badVpn.uidPssMeanKb, 200);
     expect(badVpn.runtimePssMeanKb, 70);
     expect(badVpn.processNames, contains('libtun2socks.so'));
   });
@@ -80,6 +87,7 @@ process\tp-badvpn\t2000\t10123\t10\t1\t100\t110\tapp\t100\t200\t0\t280\t3999999\
         logContent: log,
         metricsContent: metrics,
         packageName: 'app',
+        probePackageName: 'probe',
         clockTicksPerSecond: 100,
       ),
       throwsFormatException,
@@ -88,6 +96,7 @@ process\tp-badvpn\t2000\t10123\t10\t1\t100\t110\tapp\t100\t200\t0\t280\t3999999\
 
   test('accepts RSS-only samples without printing NaN for unavailable PSS', () {
     const packageName = 'dev.zikwall.flutter_xray.example';
+    const probePackageName = 'dev.zikwall.flutter_xray.benchmark_probe';
     final log = ['badvpn', 'xray', 'hev'].asMap().entries.map((entry) {
       final backend = entry.value;
       return 'DEVICE_BENCHMARK RESULT phase_id=p-$backend profile=direct '
@@ -117,6 +126,11 @@ process\tp-badvpn\t2000\t10123\t10\t1\t100\t110\tapp\t100\t200\t0\t280\t3999999\
             '${timestamp == 1000 ? 200 : 220}\t'
             '$packageName:RunSoLibV2RayDaemon\t-1\t80\t'
             '0\t280\t4000000\t-50',
+          )
+          ..writeln(
+            'process\tp-$backend\t$timestamp\t10124\t13\t1\t400\t'
+            '${timestamp == 1000 ? 400 : 405}\t$probePackageName\t-1\t40\t'
+            '0\t280\t4000000\t-50',
           );
         if (backend == 'badvpn') {
           metrics.writeln(
@@ -132,11 +146,12 @@ process\tp-badvpn\t2000\t10123\t10\t1\t100\t110\tapp\t100\t200\t0\t280\t3999999\
       logContent: log,
       metricsContent: metrics.toString(),
       packageName: packageName,
+      probePackageName: probePackageName,
       clockTicksPerSecond: 100,
     );
 
     expect(report.aggregates.every((row) => row.uidPssMeanKb.isNaN), isTrue);
     expect(report.summaryTsv, isNot(contains('NaN')));
-    expect(report.summaryMarkdown, contains('UID RSS'));
+    expect(report.summaryMarkdown, contains('Test UIDs RSS'));
   });
 }

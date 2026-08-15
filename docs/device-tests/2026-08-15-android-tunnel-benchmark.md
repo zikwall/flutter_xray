@@ -1,63 +1,48 @@
-# Android tunnel benchmark — 2026-08-15
+# Superseded Android tunnel benchmark — 2026-08-15
 
-## Scope and environment
+## Status
 
-- device: Xiaomi 25028RN03A (`serenity`), ARM64;
-- Android: 15 / API 35;
-- build: Flutter profile, Dart profiling and widget tracking disabled;
-- runtime: Lib v39 / Xray-core v26.7.28;
-- network: 5 GHz Wi-Fi 5, 390 Mbps reported link, median RSSI about -51 dBm;
-- endpoint: fixed streaming HTTP payload on an ephemeral isolated dev host;
-- profile: credential-free local SOCKS inbound with Xray `freedom` outbound;
-- workload: one connection worker, 5-second warm-up, 30-second measurement and
-  5-second cooldown per phase;
-- design: six rounds covering all six BadVPN/Xray/HEV order permutations.
+The direct-profile numbers previously recorded in this document are invalid
+for backend ranking and must not be used. The traffic generator ran inside the
+same Android application that owned `VpnService`. A later explicit egress
+check proved that this process observed the physical ISP address rather than
+the configured remote tunnel address. Android may exempt the VPN owner from
+its own VPN, so successful bytes in that setup did not prove traversal of
+BadVPN, Xray native TUN or HEV.
 
-The direct profile compares the Android TUN data paths without adding a remote
-VLESS transport. It does not establish H3, gRPC, UDP, DNS-leak, background,
-`blockedApps` or end-user-app behavior.
+The result was rejected even though its schedule and process sampling were
+otherwise balanced. Position balancing cannot repair a workload that bypasses
+the system under test.
 
-## Result
+## Corrected method
 
-| Backend | N | Throughput median | Throughput mean ± SD | CV | VPN CPU mean | VPN RSS mean |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| BadVPN | 6 | 213.43 Mbps | 211.26 ± 10.97 Mbps | 5.19% | 116.52% | 140,811 KB |
-| Xray native TUN | 6 | 133.10 Mbps | 131.62 ± 6.07 Mbps | 4.61% | 162.52% | 138,919 KB |
-| HEV | 6 | 214.42 Mbps | 212.06 ± 17.26 Mbps | 8.14% | 99.48% | 139,776 KB |
+The replacement harness installs a temporary native Android companion with a
+separate UID. For every phase it:
 
-All 18 phases transferred data without an error. Foreground-service failure
-signatures and VPN daemon crashes were both zero.
+1. starts the selected backend in the Flutter VPN-owner application;
+2. verifies the expected remote egress from the companion UID;
+3. performs warm-up and measured traffic from that companion;
+4. samples both test UIDs plus the Xray daemon and standalone BadVPN process;
+5. stops the VPN and requires clean lifecycle completion;
+6. rejects missing phases, transfer errors, missing processes, foreground-
+   service failures and daemon crashes.
 
-On this direct workload HEV and BadVPN had effectively equal throughput: their
-medians differ by less than 1 Mbps. HEV used about 15% less VPN-runtime CPU
-than BadVPN. Xray native TUN was slower and used more VPN CPU. VPN RSS differed
-by less than 2 MB across the three aggregates, which is not a meaningful
-separation for this run.
+The companion is installed only for the run and removed during cleanup. The
+current accepted H3 and gRPC results use this corrected method and are recorded
+in
+[`2026-08-15-h3-grpc-tunnel-benchmark.md`](2026-08-15-h3-grpc-tunnel-benchmark.md).
 
-The VPN CPU total includes every process under the application UID except the
-main Flutter traffic-generator process. This includes the Xray daemon and the
-standalone `libtun2socks.so` BadVPN child. The UID-wide CPU and RSS remain in
-the generated report for diagnosing traffic-generator overhead.
+## Additional source controls
 
-## Measurement safeguards
+- the payload object is large enough to keep one connection active for the
+  full measured interval;
+- the payload address differs from the Xray endpoint to avoid server-side
+  public-address hairpin behavior;
+- a one-round quick run validates all three backends before the six-round
+  matrix;
+- throttled or unstable public speed-test sources are rejected rather than
+  included in an aggregate;
+- H3 and gRPC are separate matrices and are not combined into one ranking.
 
-- the position-balanced schedule prevents one backend from always running
-  first or after the device has warmed up;
-- each backend used the same phone, network, endpoint, payload and concurrency;
-- CPU comes from cumulative `/proc/<pid>/stat` ticks during the steady-state
-  interval;
-- RSS comes from `/proc/<pid>/status`;
-- `dumpsys meminfo` is not invoked during traffic because it can request a GC;
-- samples captured across a phase boundary are discarded;
-- the report rejects missing phases, unequal backend counts and transfer
-  errors instead of calculating a partial ranking.
-
-The device reported no external power during this run, but its charge counter
-changed in coarse 5,146-uAh steps. The interval is therefore not sufficient
-for a battery ranking. A longer, separately controlled unplugged run is still
-required for power comparison.
-
-Short attempts to exercise the same harness with the existing ignored H3 and
-gRPC dev profiles produced zero payload for all three backends and were
-rejected. Those profiles or endpoints need refreshing before any remote-
-transport benchmark; the failed quick runs are not included in this table.
+This correction supersedes both the old direct-profile table and any earlier
+short owner-process comparison.
