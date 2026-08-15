@@ -1,7 +1,7 @@
 # Test matrix
 
-Recorded device runs live under [`device-tests/`](device-tests/). The current
-performance baseline is
+Recorded device runs live under [`device-tests/`](device-tests/). The latest
+three-backend packet-path evidence is
 [`2026-08-15-h3-grpc-tunnel-benchmark.md`](device-tests/2026-08-15-h3-grpc-tunnel-benchmark.md),
 and the rejected owner-process baseline is explained in
 [`2026-08-15-android-tunnel-benchmark.md`](device-tests/2026-08-15-android-tunnel-benchmark.md).
@@ -18,6 +18,11 @@ Android unit tests also exercise serialized tunnel ownership, failed-start and
 failed-stop cleanup, concurrent start/stop ordering, idempotency and 100
 connect/disconnect lifecycle cycles. They do not claim packet-path coverage.
 
+The release gate is correctness, not backend ranking. BadVPN, Xray native TUN
+and HEV must each carry supported traffic and shut down cleanly without crash,
+ANR, foreground-service failure, orphan process or stuck TUN. CPU, RSS,
+throughput, thermal and battery measurements are optional diagnostic evidence.
+
 | Area | Required scenarios | Evidence |
 | --- | --- | --- |
 | Address families | IPv4-only, IPv6-only, dual stack | public IP and reachability results |
@@ -28,9 +33,9 @@ connect/disconnect lifecycle cycles. They do not claim packet-path coverage.
 | Lifecycle | reconnect, rapid reconnect, background, sleep/wake | timestamps and final connection state |
 | Repetition | at least 100 connect/disconnect cycles | no stuck VPN interface, orphan process or failure |
 | App exclusion | one included app and one package in `blockedApps` | distinct public IPs and package names |
-| Packaging | ARM64 release APK | byte size, SHA-256 and install result |
+| Packaging | ARM64 release APK | ABI, SHA-256, install and launch result |
 | Android ABI | all shipped `.so` files | ABI inventory and 16 KB ELF/APK checks |
-| Performance | idle and loaded tunnel | CPU, RSS, throughput and battery delta on a named device |
+| Optional diagnostics | representative loaded tunnel | throughput and resource samples when investigating a regression |
 
 Use the same device, Android build, server/profile, test duration and network
 where results are compared across revisions. Never commit production profiles,
@@ -91,10 +96,10 @@ under ignored `tool/device/results/`; bearer links must never be copied into a
 tracked test or document.
 
 Each backend gets an individual log, evidence file, resource sample and
-summary. The runner also writes `comparison.tsv`. A fair performance run uses
-the same physical device, network, endpoint, profile order, run count and hold
-duration for all three backends. Missing IPv6, DNS-source, app-exclusion or
-battery evidence remains visibly absent; it is never inferred from a TCP pass.
+summary. The runner also writes `comparison.tsv`. Missing IPv6, DNS-source or
+app-exclusion evidence remains visibly absent; it is never inferred from a TCP
+pass. When optional performance diagnostics are collected, use the same
+device, network, endpoint, profile order, run count and hold duration.
 Any `ForegroundServiceDidNotStartInTimeException`, failed foreground
 promotion, late `set service ... to foreground failed` warning or daemon crash
 makes the run fail even when packet probes happened to pass. In particular,
@@ -151,9 +156,8 @@ The measured interval records:
 RSS is read from `/proc` during traffic. The sampler does not invoke
 `dumpsys meminfo`, because that command can request a process GC and distort
 the measurement. Consequently the PSS columns remain blank unless a future
-separate memory-only sampler supplies them. A powered run records charge data
-but is not valid battery-consumption evidence; use `--require-unplugged` for a
-battery run.
+separate memory-only sampler supplies them. Battery and thermal fields are
+retained as context only and are not part of plugin acceptance.
 
 Results are stored under ignored `tool/device/results/benchmark-*/`. The raw
 log, environment, process metrics and phase markers are retained alongside
@@ -209,8 +213,8 @@ Verify UDP ingress before the device run and remove the ephemeral process and
 files afterwards. A public resolver timeout is not controlled UDP evidence.
 
 Set `FLUTTER_XRAY_DEVICE_HOLD_SECONDS` to keep the verified tunnel active while
-the device is sent to background or sleep and CPU, RSS and battery evidence is
-collected. The direct profile isolates the client packet path; VLESS gRPC,
+the device is sent to background or sleep and post-wake traffic is checked.
+The direct profile isolates the client packet path; VLESS gRPC,
 HTTP/2, SplitHTTP/H2R, QUIC and meaningful `blockedApps` public-IP comparison
 still require explicit test-server profiles and must be recorded separately.
 `FLUTTER_XRAY_DEVICE_REQUIRE_UDP=false` may be used to isolate lifecycle or TCP

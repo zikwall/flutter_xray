@@ -43,6 +43,13 @@ application, not in this package API.
 When `tunnelBackend` is omitted, the Dart API explicitly sends
 `TunnelBackend.badVpn`. There is no manifest override or hidden product policy.
 
+All three backends have the same library-level reliability contract: working
+TCP, UDP and DNS over supported IPv4/IPv6 networks; serialized start/stop and
+reconnect; deterministic cleanup after success or failure; and no crash, ANR,
+foreground-service timeout, orphan process or stuck TUN. Throughput, CPU and
+battery comparisons are optional diagnostics, not release gates for the
+plugin.
+
 `TunnelBackend.xray` expects the normal plugin configuration with a local SOCKS
 inbound. Android replaces that inbound in memory with Xray's native `tun`
 inbound, preserves its tag/sniffing identity and passes the established

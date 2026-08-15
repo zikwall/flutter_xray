@@ -98,8 +98,8 @@ the H3 run observed about -50 dBm Wi-Fi, while the gRPC run observed about
 
 The short Android charge-counter steps were coarse: most 30-second phases
 reported the same 5,146 µAh decrement, with occasional zero or double steps.
-They are insufficient to name a battery winner. A dedicated longer battery run
-with controlled radio conditions remains required.
+They are insufficient to name a battery winner and no further battery ranking
+is required for library acceptance.
 
 This throughput benchmark also does not prove IPv6, DNS-leak prevention,
 `blockedApps`, sleep/background recovery or 100-cycle lifecycle behavior.
